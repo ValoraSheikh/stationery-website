@@ -5,6 +5,7 @@ export interface ICartItem {
   quantity: number;
   addedAt: Date;
   priceAtAdd?: number;
+  variantSku?: string;
 }
 
 export interface ICart {
@@ -25,7 +26,7 @@ export interface ICartDocument extends ICart, Document {
   items: Types.DocumentArray<ICartItemDocument>;
 }
 
-export type ICartModel = Model<ICartDocument>
+export type ICartModel = Model<ICartDocument>;
 
 const cartItemSchema = new mongoose.Schema<ICartItem>(
   {
@@ -33,6 +34,11 @@ const cartItemSchema = new mongoose.Schema<ICartItem>(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
       required: true,
+    },
+    variantSku: {
+      type: String,
+      required: true,
+      trim: true,
     },
     quantity: {
       type: Number,
