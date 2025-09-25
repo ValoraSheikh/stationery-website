@@ -15,8 +15,13 @@ export async function GET(req: Request) {
       );
     }
 
-    const products = await Product.find({ mainCategory: category, isActive: true })
-      .select("name brandName price images variants totalStock isFeatured createdAt")
+    const products = await Product.find({
+      mainCategory: category,
+      isActive: true,
+    })
+      .select(
+        "name brandName price images variants totalStock isFeatured createdAt"
+      )
       .sort({ createdAt: -1 });
 
     return NextResponse.json({ products }, { status: 200 });
