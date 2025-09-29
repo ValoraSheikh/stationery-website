@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Order from "@/models/Order.model";
 import dbConnect from "@/lib/connectDB";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextAuth]/options";
+import { authOptions } from "../auth/[...nextauth]/options";
 import User from "@/models/User.model";
 
 function generateOrderId(): string {

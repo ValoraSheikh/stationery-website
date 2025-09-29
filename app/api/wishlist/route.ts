@@ -3,7 +3,7 @@ import dbConnect from "@/lib/connectDB";
 import Wishlist from "@/models/Wishlist.model";
 import Product from "@/models/Product.model";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextAuth]/options";
+import { authOptions } from "../auth/[...nextauth]/options";
 import mongoose from "mongoose";
 import User from "@/models/User.model";
 
