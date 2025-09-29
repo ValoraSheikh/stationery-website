@@ -24,6 +24,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Image from "next/image";
 import Link from "next/link";
+import ProfileBtn from "./Home/profileBtn";
 
 const navigation = {
   categories: [
@@ -418,6 +419,11 @@ export default function Navbar() {
                             items in cart, view bag
                           </span>
                         </Link>
+                      </div>
+
+                      {/* Profile Button */}
+                      <div className="ml-4 flow-root lg:ml-8">
+                        <ProfileBtn/>
                       </div>
                     </div>
                   </div>
