@@ -19,7 +19,9 @@ export default function ClientLayout({
   return (
     <>
       {!isAuthPage && <Navbar />}
-      <main>{children}</main>
+      <main>
+        {children}
+      </main>
       {!isAuthPage && <Footer />}
     </>
   );
