@@ -2,9 +2,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function SignUpPage() {
+  const router = useRouter();
+
   const [formData, setFormData] = useState({
+    name: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -31,6 +36,10 @@ export default function SignUpPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
+
+    if (!formData.name || formData.name.trim().length < 2) {
+      newErrors.name = "Name is required (min 2 characters)";
+    }
 
     if (!formData.email) {
       newErrors.email = "Email is required";
@@ -70,24 +79,64 @@ export default function SignUpPage() {
     setErrors({});
 
     try {
-      // Here you would make the API call to create the account
-      console.log("Creating account with:", formData);
+      // Trim inputs
+      const payload = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+      };
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      // Redirect or show success message
-      alert("Account created successfully!");
-    } catch {
-      setErrors({ submit: "Failed to create account. Please try again." });
-    } finally {
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const message =
+          (data && (data.message || data.error)) ||
+          "Failed to create account. Please try again.";
+        setErrors({ submit: String(message) });
+        setIsLoading(false);
+        return;
+      }
+
+      // registration successful
+      // auto-login using credentials provider (no redirect)
+      const signInResult = await signIn("credentials", {
+        email: payload.email,
+        password: payload.password,
+        redirect: false,
+        callbackUrl: "/"
+      });
+
+      console.log("😂😎", signInResult);
+      
+
+      // signIn can return undefined in some builds; guard it
+      if (signInResult?.error) {
+        setErrors({
+          submit: "Account created but sign-in failed. Please try to sign in.",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // success - redirect to home (or dashboard)
+      router.push("/");
+    } catch (err) {
+      console.error("Signup error:", err);
+      setErrors({ submit: "Something went wrong. Please try again." });
       setIsLoading(false);
     }
   };
 
   const handleSocialSignUp = (provider: string) => {
-    console.log(`Sign up with ${provider}`);
-    // Handle social sign-up
+    // for Google: signIn('google')
+    // pass callbackUrl if you want to redirect after login
+    signIn(provider.toLowerCase()); // provider should be "google"
   };
 
   return (
@@ -131,6 +180,34 @@ export default function SignUpPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Name Field */}
+            <div>
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-gray-700 mb-2 font-inter"
+              >
+                Full name
+              </label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                className={`w-full px-4 py-3 border rounded-lg font-inter transition-all duration-200 text-black ${
+                  errors.name
+                    ? "border-red-300 focus:border-red-500 focus:ring-red-500"
+                    : "border-gray-300 focus:gray-gray-500 focus:ring-gray-500"
+                } focus:ring-2 focus:ring-opacity-20 outline-none`}
+                placeholder="Your full name"
+              />
+              {errors.name && (
+                <p className="mt-1 text-sm text-red-600 font-inter">
+                  {errors.name}
+                </p>
+              )}
+            </div>
+
             {/* Email Field */}
             <div>
               <label
@@ -145,7 +222,7 @@ export default function SignUpPage() {
                 name="email"
                 value={formData.email}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 border rounded-lg font-inter transition-all duration-200 ${
+                className={`w-full px-4 py-3 border rounded-lg font-inter transition-all duration-200 text-black ${
                   errors.email
                     ? "border-red-300 focus:border-red-500 focus:ring-red-500"
                     : "border-gray-300 focus:gray-gray-500 focus:ring-gray-500"
@@ -173,7 +250,7 @@ export default function SignUpPage() {
                 name="password"
                 value={formData.password}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 border rounded-lg font-inter transition-all duration-200 ${
+                className={`w-full px-4 py-3 border rounded-lg font-inter transition-all duration-200 text-black ${
                   errors.password
                     ? "border-red-300 focus:border-red-500 focus:ring-red-500"
                     : "border-gray-300 focus:border-gray-500 focus:ring-gray-500"
@@ -201,7 +278,7 @@ export default function SignUpPage() {
                 name="confirmPassword"
                 value={formData.confirmPassword}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 border rounded-lg font-inter transition-all duration-200 ${
+                className={`w-full px-4 py-3 border rounded-lg font-inter transition-all duration-200 text-black ${
                   errors.confirmPassword
                     ? "border-red-300 focus:border-red-500 focus:ring-red-500"
                     : "border-gray-300 focus:border-gray-500 focus:ring-gray-500"
@@ -284,8 +361,8 @@ export default function SignUpPage() {
           <div className="grid grid-cols-2 gap-4">
             <button
               type="button"
-              onClick={() => handleSocialSignUp("Google")}
-              className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 focus:ring-4 focus:ring-gray-200 focus:ring-opacity-50 outline-none transform hover:scale-[1.02] active:scale-[0.98] font-inter"
+              onClick={() => handleSocialSignUp("google")}
+              className="flex items-center justify-center px-4 w-full py-3 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 focus:ring-4 focus:ring-gray-200 focus:ring-opacity-50 outline-none transform hover:scale-[1.02] active:scale-[0.98] font-inter"
             >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path
@@ -307,28 +384,13 @@ export default function SignUpPage() {
               </svg>
               Google
             </button>
-
-            <button
-              type="button"
-              onClick={() => handleSocialSignUp("GitHub")}
-              className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 focus:ring-4 focus:ring-gray-200 focus:ring-opacity-50 outline-none transform hover:scale-[1.02] active:scale-[0.98] font-inter"
-            >
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-              </svg>
-              GitHub
-            </button>
           </div>
         </div>
       </div>
 
       {/* Right Side - Image */}
-      <div className="hidden lg:block lg:w-1/2 relative">
-        {/* <div className="absolute inset-0 bg-gradient-to-br from-gray-600 to-blue-600 flex items-center justify-center">
+      <div className=" lg:block lg:w-1/2 relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-600 to-blue-600 flex items-center justify-center">
           <div className="text-center text-white p-12">
             <div className="w-24 h-24 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-8">
               <svg
@@ -361,14 +423,13 @@ export default function SignUpPage() {
               </div>
             </div>
           </div>
-        </div> */}
+        </div>
 
-
-        <Image 
+        <Image
           src="https://plus.unsplash.com/premium_vector-1704897618835-2fd919a49ced?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8amV3ZWxyeXxlbnwwfHwwfHx8MA%3D%3D"
           alt="Sign Up Illustration"
-          layout="fill"
-          objectFit="cover"
+          fill
+          style={{ objectFit: "cover" }}
           className="w-full h-full object-cover"
         />
       </div>
