@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/connectDB";
 import Review from "@/models/Review.model";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextAuth]/options";
+import { authOptions } from "../auth/[...nextauth]/options";
 import mongoose from "mongoose";
 
 export async function POST(request: NextRequest) {
