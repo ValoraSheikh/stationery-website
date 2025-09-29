@@ -5,7 +5,7 @@ import dbConnect from "@/lib/connectDB";
 import Cart from "@/models/Cart.model";
 import Product from "@/models/Product.model";
 import User from "@/models/User.model";
-import { authOptions } from "../auth/[...nextAuth]/options";
+import { authOptions } from "../auth/[...nextauth]/options";
 
 export async function POST(request: NextRequest) {
   try {

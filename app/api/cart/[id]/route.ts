@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import dbConnect from "@/lib/connectDB";
 import Cart from "@/models/Cart.model";
 import User from "@/models/User.model";
-import { authOptions } from "../../auth/[...nextAuth]/options";
+import { authOptions } from "../../auth/[...nextauth]/options";
 
 export async function DELETE(
   req: Request,
