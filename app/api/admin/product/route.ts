@@ -9,15 +9,15 @@ export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    // const session = await getServerSession(authOptions);
+    // if (!session?.user?.email) {
+    //   return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    // }
 
-    const adminUser = await User.findOne({ email: session.user.email });
-    if (!adminUser || adminUser.role !== "admin") {
-      return NextResponse.json({ message: "Forbidden - admin only" }, { status: 403 });
-    }
+    // const adminUser = await User.findOne({ email: session.user.email });
+    // if (!adminUser || adminUser.role !== "admin") {
+    //   return NextResponse.json({ message: "Forbidden - admin only" }, { status: 403 });
+    // }
 
     // 👇 Parse body as Partial<IProduct> (not any)
     const body: Partial<IProduct> = await request.json();

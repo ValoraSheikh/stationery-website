@@ -3,12 +3,16 @@ import dbConnect from "@/lib/connectDB";
 import Product from "@/models/Product.model";
 import mongoose from "mongoose";
 
-export async function GET(req: Request) {
+
+export async function GET(
+  _req: Request,
+  context: { params: { id: string } }
+) {
   try {
     await dbConnect();
 
-    const { searchParams } = new URL(req.url);
-    const productId = searchParams.get("id");
+    const params = await context.params;
+    const productId = params.id;
 
     if (!productId) {
       return NextResponse.json(
