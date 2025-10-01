@@ -25,6 +25,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import ProfileBtn from "./Home/profileBtn";
+import { useSession } from "next-auth/react";
 
 const navigation = {
   categories: [
@@ -32,34 +33,34 @@ const navigation = {
       name: "Notebooks",
       featured: [
         {
-          name: "New Arrivals",
-          href: "/products",
+          name: "Spriral Notebooks",
+          href: "/products?category=SpiralNotebook",
           imageSrc:
-            "https://tailwindcss.com/plus-assets/img/ecommerce-images/mega-menu-category-01.jpg",
+            "https://plus.unsplash.com/premium_photo-1723921227682-b303b933ec41?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
           imageAlt:
             "Models sitting back to back, wearing Basic Tee in black and bone.",
         },
         {
-          name: "Basic Tees",
-          href: "/products",
+          name: "A4 Notebooks",
+          href: "/products?category=A4",
           imageSrc:
-            "https://tailwindcss.com/plus-assets/img/ecommerce-images/mega-menu-category-02.jpg",
+            "https://images.unsplash.com/photo-1557752370-554e42f30a38?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
           imageAlt:
             "Close up of Basic Tee fall bundle with off-white, ochre, olive, and black tees.",
         },
         {
-          name: "Accessories",
-          href: "/products",
+          name: "A5 Notebooks",
+          href: "/products?category=A5",
           imageSrc:
-            "https://tailwindcss.com/plus-assets/img/ecommerce-images/mega-menu-category-03.jpg",
+            "https://images.unsplash.com/photo-1557752281-d4b2e550aba9?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
           imageAlt:
             "Model wearing minimalist watch with black wristband and white watch face.",
         },
         {
-          name: "Carry",
-          href: "/products",
+          name: "Rough Notebook",
+          href: "/products?category=RoughNotebook",
           imageSrc:
-            "https://tailwindcss.com/plus-assets/img/ecommerce-images/mega-menu-category-04.jpg",
+            "https://images.unsplash.com/photo-1709988795057-a13a7a612046?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
           imageAlt:
             "Model opening tan leather long wallet with credit card pockets and cash pouch.",
         },
@@ -69,10 +70,10 @@ const navigation = {
       name: "Diary",
       featured: [
         {
-          name: "New Arrivals",
-          href: "products",
+          name: "Diary",
+          href: "/products?category=Diary",
           imageSrc:
-            "https://tailwindcss.com/plus-assets/img/ecommerce-images/mega-menu-01-men-category-01.jpg",
+            "https://images.unsplash.com/photo-1709124581801-7bcf3d320da2?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
           imageAlt:
             "Hats and sweaters on wood shelves next to various colors of t-shirts on hangers.",
         },
@@ -87,6 +88,9 @@ const navigation = {
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const { data: session, status } = useSession();
+
+  if (status === "loading") return null;
 
   return (
     <div className="bg-white">
@@ -217,33 +221,35 @@ export default function Navbar() {
       <header className="relative">
         <nav aria-label="Top">
           {/* Top navigation */}
-          <div className="bg-gray-900">
-            <div className="mx-auto flex h-10 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-              {/* India Flag */}
-              <Image
-                height={500}
-                width={500}
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Flag_of_India.svg/1200px-Flag_of_India.svg.png?20240117202436"
-                alt=""
-                className="h-auto w-5 shrink-0"
-              />
+          {!session && (
+            <div className="bg-gray-900">
+              <div className="mx-auto flex h-10 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+                {/* India Flag */}
+                <Image
+                  height={500}
+                  width={500}
+                  src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Flag_of_India.svg/1200px-Flag_of_India.svg.png?20240117202436"
+                  alt=""
+                  className="h-auto w-5 shrink-0"
+                />
 
-              <div className="flex items-center space-x-6">
-                <Link
-                  href="/sign-in"
-                  className="text-sm font-medium text-white hover:text-gray-100"
-                >
-                  Sign in
-                </Link>
-                <Link
-                  href="sign-up"
-                  className="text-sm font-medium text-white hover:text-gray-100"
-                >
-                  Create an account
-                </Link>
+                <div className="flex items-center space-x-6">
+                  <Link
+                    href="/sign-in"
+                    className="text-sm font-medium text-white hover:text-gray-100"
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    href="sign-up"
+                    className="text-sm font-medium text-white hover:text-gray-100"
+                  >
+                    Create an account
+                  </Link>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Secondary navigation */}
           <div className="bg-white">
@@ -405,7 +411,7 @@ export default function Navbar() {
                       {/* Cart */}
                       <div className="ml-4 flow-root lg:ml-8">
                         <Link
-                          href="cart"
+                          href="/cart"
                           className="group -m-2 flex items-center p-2"
                         >
                           <ShoppingBagIcon
@@ -423,7 +429,7 @@ export default function Navbar() {
 
                       {/* Profile Button */}
                       <div className="ml-4 flow-root lg:ml-8">
-                        <ProfileBtn/>
+                        <ProfileBtn />
                       </div>
                     </div>
                   </div>

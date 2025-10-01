@@ -12,8 +12,6 @@ export default function ProfileBtn(): React.ReactElement {
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  console.log("😀", useSession());
-
   // compute initials when image not present
   const initials = (() => {
     const name = user?.name?.trim();
