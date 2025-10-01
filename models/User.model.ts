@@ -69,7 +69,7 @@ const userSchema = new Schema<IUserDocument>(
   }
 );
 
-userSchema.index({ email: 1 }, { unique: true });
+// userSchema.index({ email: 1 }, { unique: true });
 
 userSchema.pre("save", async function (this: IUserDocument, next) {
   // Only hash password if it has been modified (or is new)

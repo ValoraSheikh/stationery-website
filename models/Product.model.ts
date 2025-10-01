@@ -18,7 +18,7 @@ export interface IProduct {
   productCode: string; // unique product identifier
   
   // Categories
-  mainCategory: "A4" | "A3" | "RoughNotenook" | "Diary" ;
+  mainCategory: "A4" | "A3" | "RoughNotenook" | "Diary" | "SpiralNotebook";
   subCategory: string; // spiral-notebooks, composition-books, journals, etc.
   tags: string[]; // searchable keywords
   
@@ -121,7 +121,7 @@ const productSchema = new Schema<IProduct>(
     
     mainCategory: {
       type: String,
-      enum: ["A4", "A5", "A3", "RoughNotebook", "Diary"],
+      enum: ["A4", "A5", "A3", "RoughNotebook", "Diary", "SpiralNotebook"],
       required: [true, "Main category is required"],
     },
     subCategory: {
