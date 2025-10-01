@@ -1,118 +1,55 @@
+"use client";
+
 import { StarIcon } from "@heroicons/react/20/solid";
 import Image from "next/image";
 import Link from "next/link";
-
-const products = [
-  {
-    id: 1,
-    name: "Organize Basic Set (Walnut)",
-    price: "$149",
-    rating: 5,
-    reviewCount: 38,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-01.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 2,
-    name: "Organize Pen Holder",
-    price: "$15",
-    rating: 5,
-    reviewCount: 18,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-02.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 3,
-    name: "Organize Sticky Note Holder",
-    price: "$15",
-    rating: 5,
-    reviewCount: 14,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-03.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 4,
-    name: "Organize Phone Holder",
-    price: "$15",
-    rating: 4,
-    reviewCount: 21,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-04.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 5,
-    name: "Organize Small Tray",
-    price: "$15",
-    rating: 4,
-    reviewCount: 22,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-05.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 6,
-    name: "Organize Basic Set (Maple)",
-    price: "$149",
-    rating: 5,
-    reviewCount: 64,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-06.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 7,
-    name: "Out and About Bottle",
-    price: "$25",
-    rating: 4,
-    reviewCount: 12,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-07.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 8,
-    name: "Daily Notebook Refill Pack",
-    price: "$14",
-    rating: 4,
-    reviewCount: 41,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-08.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-  {
-    id: 9,
-    name: "Leather Key Ring (Black)",
-    price: "$32",
-    rating: 5,
-    reviewCount: 24,
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-05-image-card-09.jpg",
-    imageAlt: "TODO",
-    href: "products/12",
-  },
-];
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
 }
 
-export default function Example() {
+// UI Product shape
+interface Product {
+  id: string;
+  name: string;
+  price: string; // price string with currency
+  rating: number;
+  reviewCount: number;
+  imageSrc: string;
+  imageAlt: string;
+  href: string;
+}
+
+interface ProductListProps {
+  products?: Product[];
+  loading?: boolean;
+  error?: string | null;
+}
+
+// placeholder image
+const PLACEHOLDER = "https://via.placeholder.com/600x600?text=No+Image";
+
+export default function Example({
+  products = [],
+  loading = false,
+  error = null,
+}: ProductListProps) {
   return (
     <div className="bg-white">
       <div className="mx-auto max-w-7xl overflow-hidden sm:px-6 lg:px-8">
         <h2 className="sr-only">Products</h2>
+
+        {loading && (
+          <div className="py-6 text-center text-sm text-gray-600">Loading products…</div>
+        )}
+        {error && (
+          <div className="py-6 text-center text-sm text-red-600">Error: {error}</div>
+        )}
+        {!loading && !error && products.length === 0 && (
+          <div className="py-6 text-center text-sm text-gray-600">
+            No products found in this category.
+          </div>
+        )}
 
         <div className="-mx-px grid grid-cols-2 border-l border-gray-200 sm:mx-0 md:grid-cols-3 lg:grid-cols-4">
           {products.map((product) => (
@@ -124,12 +61,12 @@ export default function Example() {
                 height={500}
                 width={500}
                 alt={product.imageAlt}
-                src={product.imageSrc}
+                src={product.imageSrc || PLACEHOLDER}
                 className="aspect-square rounded-lg bg-gray-200 object-cover group-hover:opacity-75"
               />
               <div className="pt-10 pb-4 text-center">
                 <h3 className="text-sm font-medium text-gray-900">
-                  <Link href={product.href}>
+                  <Link href={`products/${product.id}`}>
                     <span aria-hidden="true" className="absolute inset-0" />
                     {product.name}
                   </Link>
@@ -142,9 +79,7 @@ export default function Example() {
                         key={rating}
                         aria-hidden="true"
                         className={classNames(
-                          product.rating > rating
-                            ? "text-yellow-400"
-                            : "text-gray-200",
+                          product.rating > rating ? "text-yellow-400" : "text-gray-200",
                           "size-5 shrink-0"
                         )}
                       />
@@ -154,9 +89,7 @@ export default function Example() {
                     {product.reviewCount} reviews
                   </p>
                 </div>
-                <p className="mt-4 text-base font-medium text-gray-900">
-                  {product.price}
-                </p>
+                <p className="mt-4 text-base font-medium text-gray-900">{product.price}</p>
               </div>
             </div>
           ))}
