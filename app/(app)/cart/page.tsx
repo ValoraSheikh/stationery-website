@@ -1,8 +1,7 @@
-// app/cart/page.tsx  (replace your existing file content with this)
+/* eslint-disable react-hooks/rules-of-hooks */
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { CheckIcon, ClockIcon } from "@heroicons/react/20/solid";
 import Image from "next/image";
 import Link from "next/link";
@@ -15,7 +14,7 @@ interface CartItem {
   quantity: number;
   priceAtAdd: number;
   subtotal: number;
-  variantSku?: string; // IMPORTANT: GET /api/cart should include this for deletes
+  variantSku?: string;
 }
 
 export default function page() {
@@ -23,13 +22,12 @@ export default function page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [removingKey, setRemovingKey] = useState<string | null>(null);
+  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
 
-  const PLACEHOLDER =
-    "https://via.placeholder.com/500x500?text=No+Image";
+  const PLACEHOLDER = "https://via.placeholder.com/500x500?text=No+Image";
 
   useEffect(() => {
     loadCart();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadCart() {
@@ -37,23 +35,30 @@ export default function page() {
     setError(null);
     try {
       const res = await fetch("/api/cart", { credentials: "same-origin" });
-      const data = await res.json().catch(() => null);
+      const data: { items?: CartItem[]; message?: string } = await res.json();
       if (!res.ok) {
         setError(data?.message || `Failed to load cart (status ${res.status})`);
         setItems([]);
       } else {
-        // expect data.items = [{ productId, name, images, basePrice, quantity, priceAtAdd, subtotal, variantSku? }, ...]
-        setItems(Array.isArray(data?.items) ? data.items : []);
+        const loadedItems = Array.isArray(data?.items) ? data.items : [];
+        // compute subtotal per item
+        setItems(
+          loadedItems.map((it) => ({
+            ...it,
+            subtotal: (it.priceAtAdd ?? it.basePrice) * it.quantity,
+          }))
+        );
       }
-    } catch (err: any) {
-      setError(err?.message || "Network error");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Network error while loading cart"
+      );
       setItems([]);
     } finally {
       setLoading(false);
     }
   }
 
-  // Remove item from cart
   async function handleRemove(item: CartItem) {
     setError(null);
 
@@ -76,32 +81,75 @@ export default function page() {
         }),
       });
 
-      const data = await res.json().catch(() => null);
+      const data: { message?: string } = await res.json();
 
       if (!res.ok) {
         setError(data?.message || `Failed to remove item (status ${res.status})`);
         return;
       }
 
-      // remove locally so UI updates immediately
       setItems((prev) =>
         prev.filter(
-          (it) => !(it.productId === item.productId && it.variantSku === item.variantSku)
+          (it) =>
+            !(it.productId === item.productId && it.variantSku === item.variantSku)
         )
       );
-    } catch (err: any) {
-      setError(err?.message || "Network error while removing item");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Network error while removing item"
+      );
     } finally {
       setRemovingKey(null);
     }
   }
 
-  // computed totals (rupees)
-  const subtotal = items.reduce((s, it) => s + (Number(it.subtotal) || 0), 0);
-  const shipping = subtotal > 0 && subtotal < 599 ? 49 : 0; // your rule
-  const orderTotal = subtotal + shipping;
+  async function handleUpdateQuantity(item: CartItem, newQty: number) {
+    if (newQty <= 0) return;
 
-  // small helper to format rupee without decimals (matches product page style)
+    const key = `${item.productId}`;
+    setUpdatingKey(key);
+
+    try {
+      const res = await fetch(`/api/cart/${item.productId}`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: item.productId, quantity: newQty }),
+      });
+
+      const data: { message?: string; cart?: { items?: CartItem[] } } =
+        await res.json();
+
+      if (!res.ok) {
+        setError(data?.message || `Failed to update quantity (status ${res.status})`);
+        return;
+      }
+
+      // update locally: quantity and subtotal
+      setItems((prev) =>
+        prev.map((it) =>
+          it.productId === item.productId
+            ? {
+                ...it,
+                quantity: newQty,
+                subtotal: (it.priceAtAdd ?? it.basePrice) * newQty,
+              }
+            : it
+        )
+      );
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Network error while updating quantity"
+      );
+    } finally {
+      setUpdatingKey(null);
+    }
+  }
+
+  // compute totals dynamically
+  const subtotal = items.reduce((s, it) => s + it.subtotal, 0);
+  const shipping = subtotal > 0 && subtotal < 599 ? 49 : 0;
+  const orderTotal = subtotal + shipping;
   const fmt = (n: number) => `₹${Math.round(n)}`;
 
   return (
@@ -115,10 +163,7 @@ export default function page() {
           <div>
             <h2 className="sr-only">Items in your shopping cart</h2>
 
-            {/* show a small loading / error message above list */}
-            {loading && (
-              <p className="text-sm text-gray-600 mb-4">Loading cart…</p>
-            )}
+            {loading && <p className="text-sm text-gray-600 mb-4">Loading cart…</p>}
             {error && (
               <p className="text-sm text-red-600 mb-4" role="alert">
                 {error}
@@ -150,9 +195,7 @@ export default function page() {
                   product.images && product.images.length > 0
                     ? product.images[0]
                     : PLACEHOLDER;
-                const key = `${product.productId}-${product.variantSku ?? productIdx}`;
-
-                // estimate inStock: we don't have stock info from GET api; assume in stock if quantity > 0
+                const key = `${product.productId}-${productIdx}`;
                 const inStock = product.quantity > 0;
 
                 return (
@@ -179,57 +222,87 @@ export default function page() {
                                 {product.name}
                               </Link>
                             </h3>
-
-                            {/* original markup used color/size; these fields are not present in GET response.
-                                keep the elements but render nothing when data is unavailable to preserve layout */}
-                            <p className="mt-1 text-sm text-gray-500">
-                              {/* color — not provided by cart GET */}
-                              {("" as string)}
-                            </p>
-                            {false ? (
-                              <p className="mt-1 text-sm text-gray-500">{""}</p>
-                            ) : null}
+                            <p className="mt-1 text-sm text-gray-500">{""}</p>
                           </div>
 
                           <p className="text-right text-sm font-medium text-gray-900">
-                            {fmt(product.priceAtAdd ?? product.basePrice)}
+                            {fmt(product.subtotal)}
                           </p>
                         </div>
 
-                        <div className="mt-4 flex items-center sm:absolute sm:top-0 sm:left-1/2 sm:mt-0 sm:block">
-                          <div className="inline-grid w-full max-w-16 grid-cols-1">
-                            <select
-                              name={`quantity-${productIdx}`}
-                              aria-label={`Quantity, ${product.name}`}
-                              defaultValue={String(product.quantity)}
-                              className="col-start-1 row-start-1 appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                            >
-                              <option value={1}>1</option>
-                              <option value={2}>2</option>
-                              <option value={3}>3</option>
-                              <option value={4}>4</option>
-                              <option value={5}>5</option>
-                              <option value={6}>6</option>
-                              <option value={7}>7</option>
-                              <option value={8}>8</option>
-                            </select>
-                            <ChevronDownIcon
-                              aria-hidden="true"
-                              className="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4"
-                            />
+                        <div className="mt-4 flex items-center sm:absolute sm:top-0 sm:left-1/2 sm:mt-0 sm:flex-col sm:items-start">
+                          <div
+                            className="py-2 px-3 inline-block bg-white border border-gray-200 rounded-lg"
+                            data-hs-input-number=""
+                          >
+                            <div className="flex items-center gap-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateQuantity(product, product.quantity - 1)
+                                }
+                                disabled={updatingKey === product.productId || product.quantity <= 1}
+                                className="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 disabled:opacity-50"
+                                aria-label="Decrease"
+                              >
+                                <svg
+                                  className="shrink-0 size-3.5"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="24"
+                                  height="24"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M5 12h14"></path>
+                                </svg>
+                              </button>
+                              <input
+                                className="p-0 w-6 bg-transparent border-0 text-gray-800 text-center focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                type="number"
+                                aria-roledescription="Number field"
+                                value={product.quantity}
+                                data-hs-input-number-input=""
+                                readOnly
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateQuantity(product, product.quantity + 1)
+                                }
+                                disabled={updatingKey === product.productId}
+                                className="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 disabled:opacity-50"
+                                aria-label="Increase"
+                              >
+                                <svg
+                                  className="shrink-0 size-3.5"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="24"
+                                  height="24"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M5 12h14"></path>
+                                  <path d="M12 5v14"></path>
+                                </svg>
+                              </button>
+                            </div>
                           </div>
 
                           <button
                             type="button"
                             onClick={() => handleRemove(product)}
-                            disabled={removingKey === `${product.productId}:${product.variantSku}`}
-                            className="ml-4 text-sm font-medium text-indigo-600 hover:text-indigo-500 sm:mt-3 sm:ml-0"
+                            disabled={removingKey === product.productId}
+                            className="ml-4 text-sm font-medium text-indigo-600 hover:text-indigo-500 sm:ml-0 sm:mt-3"
                           >
-                            <span>
-                              {removingKey === `${product.productId}`
-                                ? "Removing..."
-                                : "Remove"}
-                            </span>
+                            {removingKey === product.productId ? "Removing..." : "Remove"}
                           </button>
                         </div>
                       </div>
@@ -246,10 +319,7 @@ export default function page() {
                             className="size-5 shrink-0 text-gray-300"
                           />
                         )}
-
-                        <span>
-                          {inStock ? "In stock" : `Ships soon`}
-                        </span>
+                        <span>{inStock ? "In stock" : `Ships soon`}</span>
                       </p>
                     </div>
                   </li>
@@ -262,31 +332,19 @@ export default function page() {
           <div className="mt-10 sm:ml-32 sm:pl-6">
             <div className="rounded-lg bg-gray-50 px-4 py-6 sm:p-6 lg:p-8">
               <h2 className="sr-only">Order summary</h2>
-
               <div className="flow-root">
                 <dl className="-my-4 divide-y divide-gray-200 text-sm">
                   <div className="flex items-center justify-between py-4">
                     <dt className="text-gray-600">Subtotal</dt>
                     <dd className="font-medium text-gray-900">{fmt(subtotal)}</dd>
                   </div>
-
-                  {/* shipping row: applies your rule */}
                   <div className="flex items-center justify-between py-4">
                     <dt className="text-gray-600">Shipping</dt>
-                    <dd className="font-medium text-gray-900">
-                      {shipping === 0 ? "Free" : fmt(shipping)}
-                    </dd>
+                    <dd className="font-medium text-gray-900">{shipping === 0 ? "🎉 Limited Time: Free Delivery – Grab Yours Now!" : fmt(shipping)}</dd>
                   </div>
-
-                  {/* removed Tax row (per your instruction) */}
-
                   <div className="flex items-center justify-between py-4">
-                    <dt className="text-base font-medium text-gray-900">
-                      Order total
-                    </dt>
-                    <dd className="text-base font-medium text-gray-900">
-                      {fmt(orderTotal)}
-                    </dd>
+                    <dt className="text-base font-medium text-gray-900">Order total</dt>
+                    <dd className="text-base font-medium text-gray-900">{fmt(orderTotal)}</dd>
                   </div>
                 </dl>
               </div>
@@ -297,7 +355,7 @@ export default function page() {
                 type="submit"
                 className="w-full rounded-md border border-transparent bg-indigo-600 px-4 py-3 text-base font-medium text-white shadow-xs hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-50 focus:outline-hidden"
               >
-                <Link href="checkout">Checkout</Link>
+                <Link href="/checkout">Checkout</Link>
               </button>
             </div>
 
