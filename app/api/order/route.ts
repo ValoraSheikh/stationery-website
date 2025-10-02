@@ -37,9 +37,7 @@ export async function POST(request: NextRequest) {
       ...body,
     };
 
-    const newOrder = await Order.create({
-      orderData,
-    });
+    const newOrder = await Order.create(orderData);
 
     const savedOrder = await newOrder.save();
 
