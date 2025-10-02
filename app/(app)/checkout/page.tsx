@@ -1,52 +1,325 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
+
+import { useEffect, useState, FormEvent } from "react";
 import {
   Popover,
   PopoverBackdrop,
   PopoverButton,
   PopoverPanel,
 } from "@headlessui/react";
-import { ChevronUpIcon } from "@heroicons/react/20/solid";
+import { CheckCircleIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import Image from "next/image";
+import { z } from "zod";
 
-const products = [
-  {
-    id: 1,
-    name: "Micro Backpack",
-    href: "#",
-    price: "$70.00",
-    color: "Moss",
-    size: "5L",
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/checkout-page-04-product-01.jpg",
-    imageAlt:
-      "Moss green canvas compact backpack with double top zipper, zipper front pouch, and matching carry handle and backpack straps.",
-  },
-  {
-    id: 2,
-    name: "Small Stuff Satchel",
-    href: "#",
-    price: "$180.00",
-    color: "Sand",
-    size: "18L",
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/checkout-page-04-product-02.jpg",
-    imageAlt:
-      "Front of satchel with tan canvas body, straps, handle, drawstring top, and front zipper pouch.",
-  },
-  {
-    id: 3,
-    name: "Carry Clutch",
-    href: "#",
-    price: "$70.00",
-    color: "White and Black",
-    size: "Small",
-    imageSrc:
-      "https://tailwindcss.com/plus-assets/img/ecommerce-images/checkout-page-04-product-03.jpg",
-    imageAlt:
-      "Folding zipper clutch with white fabric body, synthetic black leather accent strip, and black loop zipper pull.",
-  },
-];
 
-export default function Example() {
+// Placeholder image when product has no image (not a product fallback)
+const PLACEHOLDER =
+  "https://via.placeholder.com/600x600?text=No+Image";
+
+// Types for cart API response items (matching your server mapping)
+interface CartApiItem {
+  productId: string;
+  name: string;
+  images: string[];
+  basePrice: number;
+  quantity: number;
+  priceAtAdd: number;
+  subtotal: number;
+  variantSku?: string;
+}
+
+interface CartApiResponse {
+  items: CartApiItem[];
+  shippingCost?: number;
+  taxAmount?: number;
+  totalAmount?: number;
+}
+
+/* -----------------------
+   Zod validation schema
+   ----------------------- */
+const phoneRegex = /^(\+91)?[6-9]\d{9}$/; // accepts +91 optional or just 10 digits starting 6-9
+const pincodeRegex = /^\d{6}$/;
+
+const shippingSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(100),
+  phone: z
+    .string()
+    .regex(phoneRegex, "Enter a valid Indian phone number (10 digits, optionally +91)"),
+  email: z
+    .string()
+    .optional()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "Invalid email"),
+  addressLine1: z.string().min(5, "Address line 1 must be at least 5 characters"),
+  addressLine2: z.string().optional(),
+  city: z.string().min(2, "City must be at least 2 characters"),
+  state: z.string().min(2, "State must be at least 2 characters"),
+  pincode: z.string().regex(pincodeRegex, "Pincode must be 6 digits"),
+  country: z.string().min(2, "Country is required").default("India"),
+});
+
+const checkoutSchema = z.object({
+  contactEmail: z
+    .string()
+    .optional()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "Invalid contact email"),
+  shipping: shippingSchema,
+  paymentMethod: z.enum(["online", "cod"]),
+});
+
+type CheckoutSchema = z.infer<typeof checkoutSchema>;
+
+export default function CheckoutPage() {
+  // cart state
+  const [cart, setCart] = useState<CartApiResponse | null>(null);
+  const [cartLoading, setCartLoading] = useState<boolean>(true);
+  const [cartError, setCartError] = useState<string | null>(null);
+
+  // shipping info state (fields exactly as required)
+  const [shipping, setShipping] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    pincode: "",
+    country: "India",
+  });
+
+  // contact email (top section)
+  const [contactEmail, setContactEmail] = useState("");
+
+  // payment method state ('online' | 'cod')
+  const [paymentMethod, setPaymentMethod] = useState<"online" | "cod">(
+    "online"
+  );
+
+  // validation errors from zod mapped to simple keys
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // UI
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    // fetch cart on mount
+    const fetchCart = async () => {
+      setCartLoading(true);
+      try {
+        const res = await fetch("/api/cart");
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Cart fetch failed: ${res.status} ${text}`);
+        }
+        const data = (await res.json()) as CartApiResponse;
+        setCart(data);
+      } catch (err: unknown) {
+        console.error(err);
+        setCartError(err instanceof Error ? err.message : "Failed to fetch cart");
+      } finally {
+        setCartLoading(false);
+      }
+    };
+
+    fetchCart();
+  }, []);
+
+  // helper: currency formatting
+  const formatCurrency = (n: number) => `₹${n.toFixed(2)}`;
+
+  // simple orderId generator (server should be authoritative)
+  const generateOrderId = () => {
+    const ts = Date.now().toString(36);
+    const rand = Math.random().toString(36).slice(2, 8);
+    return `ORD-${ts}-${rand}`.toUpperCase();
+  };
+
+  // validate + submit
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    setErrors({});
+
+    // build payload for zod parse
+    const payload = {
+      contactEmail: contactEmail?.trim() || undefined,
+      shipping: {
+        ...shipping,
+        // ensure strings trimmed
+        name: shipping.name.trim(),
+        phone: shipping.phone.trim(),
+        email: shipping.email?.trim(),
+        addressLine1: shipping.addressLine1.trim(),
+        addressLine2: shipping.addressLine2?.trim(),
+        city: shipping.city.trim(),
+        state: shipping.state.trim(),
+        pincode: shipping.pincode.trim(),
+        country: shipping.country?.trim() || "India",
+      },
+      paymentMethod,
+    };
+
+    const result = checkoutSchema.safeParse(payload);
+
+    if (!result.success) {
+      // map zod errors to our errors state
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const path = issue.path.join(".") || "form";
+        if (!fieldErrors[path]) fieldErrors[path] = issue.message;
+      }
+      setErrors(fieldErrors);
+      // scroll to first error
+      const firstKey = Object.keys(fieldErrors)[0];
+      if (firstKey) {
+        const id = firstKey.replace("shipping.", "").replace("contactEmail", "email-address");
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
+    }
+
+    // validation passed
+    setSubmitting(true);
+    try {
+      // Ensure we have cart data (type-narrowing so TS knows later it's not null)
+      let cartData: CartApiResponse | null = cart;
+      if (!cartData) {
+        const res = await fetch("/api/cart");
+        if (!res.ok) throw new Error("Unable to fetch cart for checkout");
+        const data = (await res.json()) as CartApiResponse;
+        cartData = data;
+        setCart(data);
+      }
+
+      if (!cartData || !cartData.items || cartData.items.length === 0) {
+        throw new Error("Cart is empty");
+      }
+
+      // Calculate subtotal from cart items (defensive)
+      const subtotal = (cartData.items || []).reduce(
+        (s, it) => s + (typeof it.subtotal === "number" ? it.subtotal : (it.priceAtAdd * it.quantity)),
+        0
+      );
+
+      // Shipping rule: if subtotal < 599 => ₹49, else 0
+      const shippingCost = subtotal < 599 ? 49 : 0;
+
+      // tax from cart if provided, otherwise 0
+      const taxAmount = cartData.taxAmount ?? 0;
+
+      // discount (client currently none)
+      const discount = 0;
+
+      // grand total explicit calculation
+      const grandTotal = subtotal + shippingCost + taxAmount - discount;
+
+      // Prepare items for order model
+      const items = (cartData.items || []).map((it) => ({
+        productId: it.productId,
+        variantSku: it.variantSku ?? undefined,
+        name: it.name,
+        quantity: it.quantity,
+        price: it.priceAtAdd,
+        total: it.subtotal,
+      }));
+
+      // Map paymentMethod to Order model enum
+      const paymentMethodOrder = paymentMethod === "cod" ? "COD" : ("Card" as const);
+
+      // Payment status: pending until payment processed
+      const paymentStatus = "pending";
+
+      const now = new Date();
+
+      const order = {
+        orderId: generateOrderId(),
+        userId: null as null | string, // server should set from session
+        status: "pending" as const,
+        items,
+        subtotal,
+        shippingCost,
+        taxAmount,
+        discount,
+        grandTotal,
+        paymentMethod: paymentMethodOrder,
+        paymentStatus,
+        transactionId: undefined as string | undefined,
+        shippingAddress: {
+          name: payload.shipping.name,
+          phone: payload.shipping.phone,
+          email: payload.shipping.email || payload.contactEmail || undefined,
+          addressLine1: payload.shipping.addressLine1,
+          addressLine2: payload.shipping.addressLine2 || undefined,
+          city: payload.shipping.city,
+          state: payload.shipping.state,
+          pincode: payload.shipping.pincode,
+          country: payload.shipping.country || "India",
+        },
+        billingAddress: undefined as undefined | typeof shipping,
+        expectedDelivery: undefined as Date | undefined,
+        deliveredAt: undefined as Date | undefined,
+        cancellationReason: undefined as string | undefined,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+
+      // Log assembled order
+      // eslint-disable-next-line no-console
+      console.log("=== ASSEMBLED ORDER OBJECT ===");
+      console.log(order);
+
+      setSubmitSuccess("Order object assembled and logged to console (see devtools).");
+
+      // clear errors (if any)
+      setErrors({});
+      // scroll to top for feedback
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err: unknown) {
+      console.error(err);
+      setSubmitError(err instanceof Error ? err.message : "Failed to assemble order");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // update shipping helper
+  const updateShipping = (key: keyof typeof shipping, value: string) => {
+    setShipping((s) => ({ ...s, [key]: value }));
+    // clear error for this field if any
+    setErrors((prev) => {
+      const copy = { ...prev };
+      delete copy[`shipping.${key}`];
+      return copy;
+    });
+  };
+
+  // Products to render in summary — NO FALLBACK PRODUCTS
+  const productsToRender =
+    cart && cart.items && cart.items.length > 0
+      ? cart.items.map((it) => ({
+          id: String(it.productId),
+          name: it.name,
+          price: formatCurrency(it.subtotal),
+          color: "", // not provided by cart
+          size: `${it.quantity} pcs`,
+          imageSrc: it.images?.[0] || PLACEHOLDER,
+          imageAlt: it.name,
+        }))
+      : [];
+
+  // Summary numbers computed from cart (always computed from cart contents so it's consistent)
+  const subtotalNumber = cart?.items?.reduce((s, it) => s + (it.subtotal ?? 0), 0) ?? 0;
+  const shippingNumber = subtotalNumber < 599 && subtotalNumber > 0 ? 49 : 0;
+  const taxNumber = cart?.taxAmount ?? 0;
+  const discountNumber = 0;
+  const totalNumber = subtotalNumber + shippingNumber + taxNumber - discountNumber;
+
   return (
     <div className="bg-white">
       {/* Background color split screen for large screens */}
@@ -67,60 +340,58 @@ export default function Example() {
           className="bg-gray-50 px-4 pt-16 pb-10 sm:px-6 lg:col-start-2 lg:row-start-1 lg:bg-transparent lg:px-0 lg:pb-16"
         >
           <div className="mx-auto max-w-lg lg:max-w-none">
-            <h2
-              id="summary-heading"
-              className="text-lg font-medium text-gray-900"
-            >
+            <h2 id="summary-heading" className="text-lg font-medium text-gray-900">
               Order summary
             </h2>
 
-            <ul
-              role="list"
-              className="divide-y divide-gray-200 text-sm font-medium text-gray-900"
-            >
-              {products.map((product) => (
-                <li
-                  key={product.id}
-                  className="flex items-start space-x-4 py-6"
-                >
-                  <Image
-                    height={500}
-                    width={500}
-                    alt={product.imageAlt}
-                    src={product.imageSrc}
-                    className="size-20 flex-none rounded-md object-cover"
-                  />
-                  <div className="flex-auto space-y-1">
-                    <h3>{product.name}</h3>
-                    <p className="text-gray-500">{product.color}</p>
-                    <p className="text-gray-500">{product.size}</p>
-                  </div>
-                  <p className="flex-none text-base font-medium">
-                    {product.price}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            {cartLoading ? (
+              <div className="py-6 text-center text-sm text-gray-600">Loading cart…</div>
+            ) : productsToRender.length === 0 ? (
+              <div className="py-6 text-center text-sm text-gray-600">Your cart is empty.</div>
+            ) : (
+              <ul
+                role="list"
+                className="divide-y divide-gray-200 text-sm font-medium text-gray-900"
+              >
+                {productsToRender.map((product) => (
+                  <li key={product.id} className="flex items-start space-x-4 py-6">
+                    <Image
+                      height={500}
+                      width={500}
+                      alt={product.imageAlt}
+                      src={product.imageSrc}
+                      className="size-20 flex-none rounded-md object-cover"
+                    />
+                    <div className="flex-auto space-y-1">
+                      <h3>{product.name}</h3>
+                      <p className="text-gray-500">{product.color}</p>
+                      <p className="text-gray-500">{product.size}</p>
+                    </div>
+                    <p className="flex-none text-base font-medium">{product.price}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             <dl className="hidden space-y-6 border-t border-gray-200 pt-6 text-sm font-medium text-gray-900 lg:block">
               <div className="flex items-center justify-between">
                 <dt className="text-gray-600">Subtotal</dt>
-                <dd>$320.00</dd>
+                <dd>{formatCurrency(subtotalNumber)}</dd>
               </div>
 
               <div className="flex items-center justify-between">
                 <dt className="text-gray-600">Shipping</dt>
-                <dd>$15.00</dd>
+                <dd>{formatCurrency(shippingNumber)}</dd>
               </div>
 
               <div className="flex items-center justify-between">
                 <dt className="text-gray-600">Taxes</dt>
-                <dd>$26.80</dd>
+                <dd>{formatCurrency(taxNumber)}</dd>
               </div>
 
               <div className="flex items-center justify-between border-t border-gray-200 pt-6">
                 <dt className="text-base">Total</dt>
-                <dd className="text-base">$361.80</dd>
+                <dd className="text-base">{formatCurrency(totalNumber)}</dd>
               </div>
             </dl>
 
@@ -129,11 +400,8 @@ export default function Example() {
                 <div className="mx-auto max-w-lg">
                   <PopoverButton className="flex w-full items-center py-6 font-medium">
                     <span className="mr-auto text-base">Total</span>
-                    <span className="mr-2 text-base">$361.80</span>
-                    <ChevronUpIcon
-                      aria-hidden="true"
-                      className="size-5 text-gray-500"
-                    />
+                    <span className="mr-2 text-base">{formatCurrency(totalNumber)}</span>
+                    <ChevronUpIcon aria-hidden="true" className="size-5 text-gray-500" />
                   </PopoverButton>
                 </div>
               </div>
@@ -149,17 +417,17 @@ export default function Example() {
                 <dl className="mx-auto max-w-lg space-y-6">
                   <div className="flex items-center justify-between">
                     <dt className="text-gray-600">Subtotal</dt>
-                    <dd>$320.00</dd>
+                    <dd>{formatCurrency(subtotalNumber)}</dd>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <dt className="text-gray-600">Shipping</dt>
-                    <dd>$15.00</dd>
+                    <dd>{formatCurrency(shippingNumber)}</dd>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <dt className="text-gray-600">Taxes</dt>
-                    <dd>$26.80</dd>
+                    <dd>{formatCurrency(taxNumber)}</dd>
                   </div>
                 </dl>
               </PopoverPanel>
@@ -167,13 +435,14 @@ export default function Example() {
           </div>
         </section>
 
-        <form className="px-4 pt-16 pb-36 sm:px-6 lg:col-start-1 lg:row-start-1 lg:px-0 lg:pb-16">
+        <form
+          onSubmit={handleSubmit}
+          className="px-4 pt-16 pb-36 sm:px-6 lg:col-start-1 lg:row-start-1 lg:px-0 lg:pb-16"
+        >
           <div className="mx-auto max-w-lg lg:max-w-none">
+            {/* Contact information */}
             <section aria-labelledby="contact-info-heading">
-              <h2
-                id="contact-info-heading"
-                className="text-lg font-medium text-gray-900"
-              >
+              <h2 id="contact-info-heading" className="text-lg font-medium text-gray-900">
                 Contact information
               </h2>
 
@@ -189,162 +458,116 @@ export default function Example() {
                     id="email-address"
                     name="email-address"
                     type="email"
+                    value={contactEmail}
+                    onChange={(e) => {
+                      setContactEmail(e.target.value);
+                      setErrors((prev) => {
+                        const copy = { ...prev };
+                        delete copy.contactEmail;
+                        return copy;
+                      });
+                    }}
                     autoComplete="email"
                     className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                   />
                 </div>
+                {errors.contactEmail && (
+                  <p className="mt-2 text-sm text-red-600" id="email-error">
+                    {errors.contactEmail}
+                  </p>
+                )}
               </div>
             </section>
 
+            {/* Shipping information */}
             <section aria-labelledby="payment-heading" className="mt-10">
-              <h2
-                id="payment-heading"
-                className="text-lg font-medium text-gray-900"
-              >
-                Payment details
+              <h2 id="payment-heading" className="text-lg font-medium text-gray-900">
+                Shipping information
               </h2>
 
               <div className="mt-6 grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4">
+                {/* name */}
                 <div className="col-span-3 sm:col-span-4">
-                  <label
-                    htmlFor="name-on-card"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
-                    Name on card
+                  <label htmlFor="name" className="block text-sm/6 font-medium text-gray-700">
+                    Full name
                   </label>
                   <div className="mt-2">
                     <input
-                      id="name-on-card"
-                      name="name-on-card"
+                      id="name"
+                      name="name"
                       type="text"
-                      autoComplete="cc-name"
+                      value={shipping.name}
+                      onChange={(e) => updateShipping("name", e.target.value)}
                       className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                     />
                   </div>
+                  {errors["shipping.name"] && (
+                    <p className="mt-2 text-sm text-red-600">{errors["shipping.name"]}</p>
+                  )}
                 </div>
 
+                {/* phone */}
                 <div className="col-span-3 sm:col-span-4">
-                  <label
-                    htmlFor="card-number"
-                    className="block text-sm/6 font-medium text-gray-900"
-                  >
-                    Card number
+                  <label htmlFor="phone" className="block text-sm/6 font-medium text-gray-700">
+                    Phone
                   </label>
                   <div className="mt-2">
                     <input
-                      id="card-number"
-                      name="card-number"
-                      type="text"
-                      autoComplete="cc-number"
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      value={shipping.phone}
+                      onChange={(e) => updateShipping("phone", e.target.value)}
+                      autoComplete="tel"
                       className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                     />
                   </div>
+                  {errors["shipping.phone"] && (
+                    <p className="mt-2 text-sm text-red-600">{errors["shipping.phone"]}</p>
+                  )}
                 </div>
 
-                <div className="col-span-2 sm:col-span-3">
-                  <label
-                    htmlFor="expiration-date"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
-                    Expiration date (MM/YY)
+                {/* addressLine1 - FULL WIDTH ON MOBILE */}
+                <div className="col-span-3 sm:col-span-3">
+                  <label htmlFor="addressLine1" className="block text-sm/6 font-medium text-gray-700">
+                    Address line 1
                   </label>
                   <div className="mt-2">
                     <input
-                      id="expiration-date"
-                      name="expiration-date"
+                      id="addressLine1"
+                      name="addressLine1"
                       type="text"
-                      autoComplete="cc-exp"
-                      className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="cvc"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
-                    CVC
-                  </label>
-                  <div className="mt-2">
-                    <input
-                      id="cvc"
-                      name="cvc"
-                      type="text"
-                      autoComplete="csc"
-                      className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                    />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section aria-labelledby="shipping-heading" className="mt-10">
-              <h2
-                id="shipping-heading"
-                className="text-lg font-medium text-gray-900"
-              >
-                Shipping address
-              </h2>
-
-              <div className="mt-6 grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-3">
-                <div className="sm:col-span-3">
-                  <label
-                    htmlFor="company"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
-                    Company
-                  </label>
-                  <div className="mt-2">
-                    <input
-                      id="company"
-                      name="company"
-                      type="text"
-                      className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                    />
-                  </div>
-                </div>
-
-                <div className="sm:col-span-3">
-                  <label
-                    htmlFor="address"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
-                    Address
-                  </label>
-                  <div className="mt-2">
-                    <input
-                      id="address"
-                      name="address"
-                      type="text"
+                      value={shipping.addressLine1}
+                      onChange={(e) => updateShipping("addressLine1", e.target.value)}
                       autoComplete="street-address"
                       className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                     />
                   </div>
+                  {errors["shipping.addressLine1"] && (
+                    <p className="mt-2 text-sm text-red-600">{errors["shipping.addressLine1"]}</p>
+                  )}
                 </div>
 
-                <div className="sm:col-span-3">
-                  <label
-                    htmlFor="apartment"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
-                    Apartment, suite, etc.
+                {/* addressLine2 (label changed) - FULL WIDTH ON MOBILE */}
+                <div className="col-span-3 sm:col-span-3">
+                  <label htmlFor="addressLine2" className="block text-sm/6 font-medium text-gray-700">
+                    Landmark, Apartment, suite, etc.
                   </label>
                   <div className="mt-2">
                     <input
-                      id="apartment"
-                      name="apartment"
+                      id="addressLine2"
+                      name="addressLine2"
                       type="text"
+                      value={shipping.addressLine2}
+                      onChange={(e) => updateShipping("addressLine2", e.target.value)}
                       className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                     />
                   </div>
                 </div>
 
+                {/* city */}
                 <div>
-                  <label
-                    htmlFor="city"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
+                  <label htmlFor="city" className="block text-sm/6 font-medium text-gray-700">
                     City
                   </label>
                   <div className="mt-2">
@@ -352,110 +575,190 @@ export default function Example() {
                       id="city"
                       name="city"
                       type="text"
+                      value={shipping.city}
+                      onChange={(e) => updateShipping("city", e.target.value)}
                       autoComplete="address-level2"
                       className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                     />
                   </div>
+                  {errors["shipping.city"] && (
+                    <p className="mt-2 text-sm text-red-600">{errors["shipping.city"]}</p>
+                  )}
                 </div>
 
+                {/* state */}
                 <div>
-                  <label
-                    htmlFor="region"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
-                    State / Province
+                  <label htmlFor="state" className="block text-sm/6 font-medium text-gray-700">
+                    State
                   </label>
                   <div className="mt-2">
                     <input
-                      id="region"
-                      name="region"
+                      id="state"
+                      name="state"
                       type="text"
+                      value={shipping.state}
+                      onChange={(e) => updateShipping("state", e.target.value)}
                       autoComplete="address-level1"
                       className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                     />
                   </div>
+                  {errors["shipping.state"] && (
+                    <p className="mt-2 text-sm text-red-600">{errors["shipping.state"]}</p>
+                  )}
                 </div>
 
+                {/* pincode */}
                 <div>
-                  <label
-                    htmlFor="postal-code"
-                    className="block text-sm/6 font-medium text-gray-700"
-                  >
+                  <label htmlFor="pincode" className="block text-sm/6 font-medium text-gray-700">
                     Postal code
                   </label>
                   <div className="mt-2">
                     <input
-                      id="postal-code"
-                      name="postal-code"
+                      id="pincode"
+                      name="pincode"
                       type="text"
+                      value={shipping.pincode}
+                      onChange={(e) => updateShipping("pincode", e.target.value)}
                       autoComplete="postal-code"
                       className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
                     />
                   </div>
+                  {errors["shipping.pincode"] && (
+                    <p className="mt-2 text-sm text-red-600">{errors["shipping.pincode"]}</p>
+                  )}
+                </div>
+
+                {/* country */}
+                <div className="sm:col-span-3">
+                  <label htmlFor="country" className="block text-sm/6 font-medium text-gray-700">
+                    Country
+                  </label>
+                  <div className="mt-2">
+                    <input
+                      id="country"
+                      name="country"
+                      type="text"
+                      value={shipping.country}
+                      onChange={(e) => updateShipping("country", e.target.value)}
+                      className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                    />
+                  </div>
+                  {errors["shipping.country"] && (
+                    <p className="mt-2 text-sm text-red-600">{errors["shipping.country"]}</p>
+                  )}
                 </div>
               </div>
             </section>
 
+            {/* Payment Method (kept as you added) */}
             <section aria-labelledby="billing-heading" className="mt-10">
-              <h2
-                id="billing-heading"
-                className="text-lg font-medium text-gray-900"
-              >
-                Billing information
+              <h2 id="billing-heading" className="text-lg font-medium text-gray-900 mb-4">
+                Payment Method
               </h2>
 
-              <div className="mt-6 flex gap-3">
-                <div className="flex h-6 shrink-0 items-center">
-                  <div className="group grid size-4 grid-cols-1">
+              <fieldset>
+                <div className="mt-1 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {/* Pay Online Option */}
+                  <label
+                    aria-label="Pay Online"
+                    aria-description="Pay securely using Card, UPI, or NetBanking"
+                    className="group relative flex rounded-lg border border-gray-300 bg-white p-4 
+                 has-checked:outline-2 has-checked:-outline-offset-2 has-checked:outline-indigo-600 
+                 has-focus-visible:outline-3 has-focus-visible:-outline-offset-1 
+                 has-disabled:border-gray-400 has-disabled:bg-gray-200 has-disabled:opacity-25"
+                  >
                     <input
-                      defaultChecked
-                      id="same-as-shipping"
-                      name="same-as-shipping"
-                      type="checkbox"
-                      className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-indigo-600 checked:bg-indigo-600 indeterminate:border-indigo-600 indeterminate:bg-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:checked:bg-gray-100 forced-colors:appearance-auto"
+                      value="online"
+                      checked={paymentMethod === "online"}
+                      onChange={() => {
+                        setPaymentMethod("online");
+                        setErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.paymentMethod;
+                          return copy;
+                        });
+                      }}
+                      name="paymentMethod"
+                      type="radio"
+                      className="absolute inset-0 appearance-none focus:outline-none"
                     />
-                    <svg
-                      fill="none"
-                      viewBox="0 0 14 14"
-                      className="pointer-events-none col-start-1 row-start-1 size-3.5 self-center justify-self-center stroke-white group-has-disabled:stroke-gray-950/25"
-                    >
-                      <path
-                        d="M3 8L6 11L11 3.5"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="opacity-0 group-has-checked:opacity-100"
-                      />
-                      <path
-                        d="M3 7H11"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="opacity-0 group-has-indeterminate:opacity-100"
-                      />
-                    </svg>
-                  </div>
+                    <div className="flex-1">
+                      <span className="block text-base font-medium text-gray-900">Pay Online</span>
+                      <span className="mt-1 block text-sm text-gray-500">
+                        Pay securely using Card, UPI, or NetBanking.
+                      </span>
+                    </div>
+                    <CheckCircleIcon
+                      aria-hidden="true"
+                      className={`invisible size-5 text-indigo-600 ${paymentMethod === "online" ? "group-has-checked:visible visible" : ""}`}
+                    />
+                  </label>
+
+                  {/* Cash on Delivery Option */}
+                  <label
+                    aria-label="Cash on Delivery"
+                    aria-description="Pay when the product is delivered to your address"
+                    className="group relative flex rounded-lg border border-gray-300 bg-white p-4 
+                 has-checked:outline-2 has-checked:-outline-offset-2 has-checked:outline-indigo-600 
+                 has-focus-visible:outline-3 has-focus-visible:-outline-offset-1 
+                 has-disabled:border-gray-400 has-disabled:bg-gray-200 has-disabled:opacity-25"
+                  >
+                    <input
+                      value="cod"
+                      checked={paymentMethod === "cod"}
+                      onChange={() => {
+                        setPaymentMethod("cod");
+                        setErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.paymentMethod;
+                          return copy;
+                        });
+                      }}
+                      name="paymentMethod"
+                      type="radio"
+                      className="absolute inset-0 appearance-none focus:outline-none"
+                    />
+                    <div className="flex-1">
+                      <span className="block text-base font-medium text-gray-900">Cash on Delivery</span>
+                      <span className="mt-1 block text-sm text-gray-500">
+                        Pay when the product is delivered to your address.
+                      </span>
+                    </div>
+                    <CheckCircleIcon
+                      aria-hidden="true"
+                      className={`invisible size-5 text-indigo-600 ${paymentMethod === "cod" ? "group-has-checked:visible visible" : ""}`}
+                    />
+                  </label>
                 </div>
-                <label
-                  htmlFor="same-as-shipping"
-                  className="text-sm/6 font-medium text-gray-900"
-                >
-                  Same as shipping information
-                </label>
-              </div>
+                {errors["paymentMethod"] && (
+                  <p className="mt-2 text-sm text-red-600">{errors["paymentMethod"]}</p>
+                )}
+              </fieldset>
             </section>
 
             <div className="mt-10 border-t border-gray-200 pt-6 sm:flex sm:items-center sm:justify-between">
               <button
                 type="submit"
+                disabled={submitting}
                 className="w-full rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-xs hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-50 focus:outline-hidden sm:order-last sm:ml-6 sm:w-auto"
               >
-                Continue
+                {submitting ? "Processing..." : "Continue"}
               </button>
               <p className="mt-4 text-center text-sm text-gray-500 sm:mt-0 sm:text-left">
                 You won&apos;t be charged until the next step.
               </p>
             </div>
+
+            {/* Feedback */}
+            {submitError && (
+              <div className="mt-4 text-sm text-red-600">Error: {submitError}</div>
+            )}
+            {submitSuccess && (
+              <div className="mt-4 text-sm text-green-600">{submitSuccess}</div>
+            )}
+            {cartError && (
+              <div className="mt-4 text-sm text-red-600">Cart error: {cartError}</div>
+            )}
           </div>
         </form>
       </div>
