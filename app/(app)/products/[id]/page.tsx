@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import ReviewComponent from "@/components/Product/reviewCompoenet";
 import Reviews from "@/components/Product/Reviews";
+import { useReviewSummary } from "@/hooks/useReviewSummary";
 
 // helper
 function classNames(...classes: string[]) {
@@ -63,6 +64,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const productId = params?.id;
 
+  const { averageRating, reviewCount } = useReviewSummary(productId as string);
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +94,9 @@ export default function ProductDetailPage() {
         }
       } catch (err: unknown) {
         if (mounted) {
-          setError(err instanceof Error ? err.message : "Failed to fetch product");
+          setError(
+            err instanceof Error ? err.message : "Failed to fetch product"
+          );
           setLoading(false);
         }
       }
@@ -113,12 +117,16 @@ export default function ProductDetailPage() {
 
   if (error)
     return (
-      <div className="py-6 text-center text-sm text-red-600">Error: {error}</div>
+      <div className="py-6 text-center text-sm text-red-600">
+        Error: {error}
+      </div>
     );
 
   if (!product)
     return (
-      <div className="py-6 text-center text-sm text-gray-600">Product not found.</div>
+      <div className="py-6 text-center text-sm text-gray-600">
+        Product not found.
+      </div>
     );
 
   const variant = product.variants[0];
@@ -234,9 +242,13 @@ export default function ProductDetailPage() {
 
       if (!res.ok) {
         if (res.status === 401) {
-          setAddToCartError(data?.message || "Please log in to add items to your cart");
+          setAddToCartError(
+            data?.message || "Please log in to add items to your cart"
+          );
         } else {
-          setAddToCartError(data?.message || `Failed to add to cart (status ${res.status})`);
+          setAddToCartError(
+            data?.message || `Failed to add to cart (status ${res.status})`
+          );
         }
         setIsAdding(false);
         return;
@@ -302,11 +314,15 @@ export default function ProductDetailPage() {
 
             {/* Product info */}
             <div className="mt-10 px-4 sm:mt-16 sm:px-0 lg:mt-0">
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900">{product.name}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                {product.name}
+              </h1>
 
               <div className="mt-3">
                 <h2 className="sr-only">Product information</h2>
-                <p className="text-3xl tracking-tight text-gray-900">₹{finalPrice}</p>
+                <p className="text-3xl tracking-tight text-gray-900">
+                  ₹{finalPrice}
+                </p>
               </div>
 
               {/* Reviews */}
@@ -319,7 +335,7 @@ export default function ProductDetailPage() {
                         key={rating}
                         aria-hidden="true"
                         className={classNames(
-                          (product.rating || 5) > rating
+                          (averageRating || 5) > rating
                             ? "text-yellow-300"
                             : "text-gray-300",
                           "size-5 shrink-0"
@@ -327,7 +343,9 @@ export default function ProductDetailPage() {
                       />
                     ))}
                   </div>
-                  <p className="sr-only">{product.rating || 0} out of 5 stars</p>
+                  <p className="text-gray-400 pl-3.5">
+                    {reviewCount || 0} Reviews
+                  </p>
                 </div>
               </div>
 
@@ -344,10 +362,14 @@ export default function ProductDetailPage() {
               <div className="py-2 px-3 my-5 bg-white lg:w-1/2 border border-gray-200 rounded-lg">
                 <div className="w-full flex justify-between items-center gap-x-3">
                   <div>
-                    <span className="block font-medium text-sm text-gray-800">Quantity</span>
+                    <span className="block font-medium text-sm text-gray-800">
+                      Quantity
+                    </span>
                     <span className="block text-xs text-gray-500">
                       Total: ₹
-                      {quantity * ((product.variants[0]?.additionalPrice || 0) + product.price)}
+                      {quantity *
+                        ((product.variants[0]?.additionalPrice || 0) +
+                          product.price)}
                     </span>
                   </div>
                   <div className="flex items-center gap-x-1.5">
@@ -379,7 +401,9 @@ export default function ProductDetailPage() {
                       aria-roledescription="Number field"
                       value={quantity}
                       min={1}
-                      onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+                      onChange={(e) =>
+                        setQuantity(Math.max(1, Number(e.target.value)))
+                      }
                       className="p-0 w-6 bg-transparent border-0 text-gray-800 text-center focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       style={{ MozAppearance: "textfield" }}
                     />
@@ -440,7 +464,11 @@ export default function ProductDetailPage() {
                 )}
 
                 {addToCartSuccess && (
-                  <p className="mt-3 text-sm text-green-600" role="status" aria-live="polite">
+                  <p
+                    className="mt-3 text-sm text-green-600"
+                    role="status"
+                    aria-live="polite"
+                  >
                     {addToCartSuccess}
                   </p>
                 )}
@@ -457,7 +485,9 @@ export default function ProductDetailPage() {
                     <Disclosure key={detail.name} as="div">
                       <h3>
                         <DisclosureButton className="group relative flex w-full items-center justify-between py-6 text-left">
-                          <span className="text-sm font-medium text-gray-900 group-data-open:text-indigo-600">{detail.name}</span>
+                          <span className="text-sm font-medium text-gray-900 group-data-open:text-indigo-600">
+                            {detail.name}
+                          </span>
                           <span className="ml-6 flex items-center">
                             <PlusIcon
                               aria-hidden="true"
@@ -471,7 +501,10 @@ export default function ProductDetailPage() {
                         </DisclosureButton>
                       </h3>
                       <DisclosurePanel className="pb-6">
-                        <ul role="list" className="list-disc space-y-1 pl-5 text-sm/6 text-gray-700 marker:text-gray-300">
+                        <ul
+                          role="list"
+                          className="list-disc space-y-1 pl-5 text-sm/6 text-gray-700 marker:text-gray-300"
+                        >
                           {detail.items.map((item) => (
                             <li key={item} className="pl-2">
                               {item}
