@@ -17,6 +17,7 @@ import {
 } from "@headlessui/react";
 import {
   Bars3Icon,
+  HeartIcon,
   MagnifyingGlassIcon,
   QuestionMarkCircleIcon,
   ShoppingBagIcon,
@@ -407,6 +408,22 @@ export default function Navbar() {
                           className="size-6"
                         />
                       </a>
+
+                      {/* Wishlist */}
+                      <div className="ml-4 flow-root lg:ml-8">
+                        <Link
+                          href="/wishlist"
+                          className="group -m-2 flex items-center p-2"
+                        >
+                          <HeartIcon
+                            aria-hidden="true"
+                            className="size-6 shrink-0 text-gray-400 group-hover:text-gray-500"
+                          />
+                          <span className="sr-only">
+                            items in wishlist, view wishlist
+                          </span>
+                        </Link>
+                      </div>
 
                       {/* Cart */}
                       <div className="ml-4 flow-root lg:ml-8">
