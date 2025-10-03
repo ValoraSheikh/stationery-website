@@ -12,7 +12,6 @@ import { CheckCircleIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import Image from "next/image";
 import { z } from "zod";
 
-
 // Placeholder image when product has no image (not a product fallback)
 const PLACEHOLDER =
   "https://via.placeholder.com/600x600?text=No+Image";
@@ -36,9 +35,6 @@ interface CartApiResponse {
   totalAmount?: number;
 }
 
-/* -----------------------
-   Zod validation schema
-   ----------------------- */
 const phoneRegex = /^(\+91)?[6-9]\d{9}$/; // accepts +91 optional or just 10 digits starting 6-9
 const pincodeRegex = /^\d{6}$/;
 
@@ -104,6 +100,7 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     // fetch cart on mount
@@ -131,162 +128,163 @@ export default function CheckoutPage() {
   // helper: currency formatting
   const formatCurrency = (n: number) => `₹${n.toFixed(2)}`;
 
-  // simple orderId generator (server should be authoritative)
-  const generateOrderId = () => {
-    const ts = Date.now().toString(36);
-    const rand = Math.random().toString(36).slice(2, 8);
-    return `ORD-${ts}-${rand}`.toUpperCase();
+
+const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  setSubmitError(null);
+  setSubmitSuccess(null);
+  setErrors({});
+
+  // 1️⃣ Build payload for zod validation
+  const payload = {
+    contactEmail: contactEmail?.trim() || undefined,
+    shipping: {
+      ...shipping,
+      name: shipping.name.trim(),
+      phone: shipping.phone.trim(),
+      email: shipping.email?.trim(),
+      addressLine1: shipping.addressLine1.trim(),
+      addressLine2: shipping.addressLine2?.trim(),
+      city: shipping.city.trim(),
+      state: shipping.state.trim(),
+      pincode: shipping.pincode.trim(),
+      country: shipping.country?.trim() || "India",
+    },
+    paymentMethod,
   };
 
-  // validate + submit
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSubmitError(null);
-    setSubmitSuccess(null);
-    setErrors({});
+  const result = checkoutSchema.safeParse(payload);
+  if (!result.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of result.error.issues) {
+      const path = issue.path.join(".") || "form";
+      if (!fieldErrors[path]) fieldErrors[path] = issue.message;
+    }
+    setErrors(fieldErrors);
+    const firstKey = Object.keys(fieldErrors)[0];
+    if (firstKey) {
+      const id = firstKey.replace("shipping.", "").replace("contactEmail", "email-address");
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    return;
+  }
 
-    // build payload for zod parse
-    const payload = {
-      contactEmail: contactEmail?.trim() || undefined,
-      shipping: {
-        ...shipping,
-        // ensure strings trimmed
-        name: shipping.name.trim(),
-        phone: shipping.phone.trim(),
-        email: shipping.email?.trim(),
-        addressLine1: shipping.addressLine1.trim(),
-        addressLine2: shipping.addressLine2?.trim(),
-        city: shipping.city.trim(),
-        state: shipping.state.trim(),
-        pincode: shipping.pincode.trim(),
-        country: shipping.country?.trim() || "India",
+  // 2️⃣ Validation passed
+  setSubmitting(true);
+
+  try {
+    let cartData: CartApiResponse | null = cart;
+    if (!cartData) {
+      const res = await fetch("/api/cart");
+      if (!res.ok) throw new Error("Unable to fetch cart for checkout");
+      cartData = (await res.json()) as CartApiResponse;
+      setCart(cartData);
+    }
+
+    if (!cartData || !cartData.items || cartData.items.length === 0) {
+      throw new Error("Cart is empty");
+    }
+
+    const subtotal = (cartData.items || []).reduce(
+      (s, it) => s + (typeof it.subtotal === "number" ? it.subtotal : (it.priceAtAdd * it.quantity)),
+      0
+    );
+    const shippingCost = subtotal < 599 ? 49 : 0;
+    const taxAmount = cartData.taxAmount ?? 0;
+    const discount = 0;
+    const grandTotal = subtotal + shippingCost + taxAmount - discount;
+
+    const items = (cartData.items || []).map((it) => ({
+      productId: it.productId,
+      variantSku: it.variantSku ?? undefined,
+      name: it.name,
+      quantity: it.quantity,
+      price: it.priceAtAdd,
+      total: it.subtotal,
+    }));
+
+    const paymentMethodOrder = paymentMethod === "cod" ? "cod" : ("online" as const);
+    const paymentStatus = "pending";
+
+    const orderForServer = {
+      status: "pending" as const,
+      items,
+      subtotal,
+      shippingCost,
+      taxAmount,
+      discount,
+      grandTotal,
+      paymentMethod: paymentMethodOrder,
+      paymentStatus,
+      transactionId: undefined as string | undefined,
+      shippingAddress: {
+        name: payload.shipping.name,
+        phone: payload.shipping.phone,
+        email: payload.shipping.email || payload.contactEmail || undefined,
+        addressLine1: payload.shipping.addressLine1,
+        addressLine2: payload.shipping.addressLine2 || undefined,
+        city: payload.shipping.city,
+        state: payload.shipping.state,
+        pincode: payload.shipping.pincode,
+        country: payload.shipping.country || "India",
       },
-      paymentMethod,
+      billingAddress: undefined as undefined | typeof shipping,
+      expectedDelivery: undefined as Date | undefined,
+      deliveredAt: undefined as Date | undefined,
+      cancellationReason: undefined as string | undefined,
     };
 
-    const result = checkoutSchema.safeParse(payload);
+    // 3️⃣ Create order on server
+    const res = await fetch("/api/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(orderForServer),
+    });
 
-    if (!result.success) {
-      // map zod errors to our errors state
-      const fieldErrors: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const path = issue.path.join(".") || "form";
-        if (!fieldErrors[path]) fieldErrors[path] = issue.message;
-      }
-      setErrors(fieldErrors);
-      // scroll to first error
-      const firstKey = Object.keys(fieldErrors)[0];
-      if (firstKey) {
-        const id = firstKey.replace("shipping.", "").replace("contactEmail", "email-address");
-        const el = document.getElementById(id);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-      return;
+    const resJson = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(resJson?.error || "Failed to create order");
     }
 
-    // validation passed
-    setSubmitting(true);
-    try {
-      // Ensure we have cart data (type-narrowing so TS knows later it's not null)
-      let cartData: CartApiResponse | null = cart;
-      if (!cartData) {
-        const res = await fetch("/api/cart");
-        if (!res.ok) throw new Error("Unable to fetch cart for checkout");
-        const data = (await res.json()) as CartApiResponse;
-        cartData = data;
-        setCart(data);
+    const orderId = resJson?.orderId ?? resJson?.data?.orderId;
+    setPlacedOrderId(orderId);
+
+    // 4️⃣ If payment method is online, initiate payment
+    if (paymentMethodOrder === "online" && orderId) {
+      const initiateRes = await fetch("/api/payment/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: grandTotal * 100,
+          orderId: orderId,
+          redirectUrl:`${window.location.origin}/check-status?orderId=${orderId}&merchantOrderId=${orderId}`,
+        }),
+      });
+
+      const initiateData = await initiateRes.json();
+      if (!initiateRes.ok || !initiateData.redirectUrl) {
+        throw new Error(initiateData.error || "Payment initiation failed");
       }
 
-      if (!cartData || !cartData.items || cartData.items.length === 0) {
-        throw new Error("Cart is empty");
-      }
-
-      // Calculate subtotal from cart items (defensive)
-      const subtotal = (cartData.items || []).reduce(
-        (s, it) => s + (typeof it.subtotal === "number" ? it.subtotal : (it.priceAtAdd * it.quantity)),
-        0
-      );
-
-      // Shipping rule: if subtotal < 599 => ₹49, else 0
-      const shippingCost = subtotal < 599 ? 49 : 0;
-
-      // tax from cart if provided, otherwise 0
-      const taxAmount = cartData.taxAmount ?? 0;
-
-      // discount (client currently none)
-      const discount = 0;
-
-      // grand total explicit calculation
-      const grandTotal = subtotal + shippingCost + taxAmount - discount;
-
-      // Prepare items for order model
-      const items = (cartData.items || []).map((it) => ({
-        productId: it.productId,
-        variantSku: it.variantSku ?? undefined,
-        name: it.name,
-        quantity: it.quantity,
-        price: it.priceAtAdd,
-        total: it.subtotal,
-      }));
-
-      // Map paymentMethod to Order model enum
-      const paymentMethodOrder = paymentMethod === "cod" ? "COD" : ("Card" as const);
-
-      // Payment status: pending until payment processed
-      const paymentStatus = "pending";
-
-      const now = new Date();
-
-      const order = {
-        orderId: generateOrderId(),
-        userId: null as null | string, // server should set from session
-        status: "pending" as const,
-        items,
-        subtotal,
-        shippingCost,
-        taxAmount,
-        discount,
-        grandTotal,
-        paymentMethod: paymentMethodOrder,
-        paymentStatus,
-        transactionId: undefined as string | undefined,
-        shippingAddress: {
-          name: payload.shipping.name,
-          phone: payload.shipping.phone,
-          email: payload.shipping.email || payload.contactEmail || undefined,
-          addressLine1: payload.shipping.addressLine1,
-          addressLine2: payload.shipping.addressLine2 || undefined,
-          city: payload.shipping.city,
-          state: payload.shipping.state,
-          pincode: payload.shipping.pincode,
-          country: payload.shipping.country || "India",
-        },
-        billingAddress: undefined as undefined | typeof shipping,
-        expectedDelivery: undefined as Date | undefined,
-        deliveredAt: undefined as Date | undefined,
-        cancellationReason: undefined as string | undefined,
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      };
-
-      // Log assembled order
-      // eslint-disable-next-line no-console
-      console.log("=== ASSEMBLED ORDER OBJECT ===");
-      console.log(order);
-
-      setSubmitSuccess("Order object assembled and logged to console (see devtools).");
-
-      // clear errors (if any)
-      setErrors({});
-      // scroll to top for feedback
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err: unknown) {
-      console.error(err);
-      setSubmitError(err instanceof Error ? err.message : "Failed to assemble order");
-    } finally {
-      setSubmitting(false);
+      // Redirect user to payment gateway
+      window.location.href = initiateData.redirectUrl;
+      return; // stop further execution
     }
-  };
+
+    // 5️⃣ If COD, show success immediately
+    setSubmitSuccess(orderId ? `Order placed successfully — Order ID: ${orderId}` : "Order placed successfully");
+    setCart(null);
+  } catch (err: unknown) {
+    console.error(err);
+    setSubmitError(err instanceof Error ? err.message : "Failed to place order");
+  } finally {
+    setSubmitting(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+};
+
 
   // update shipping helper
   const updateShipping = (key: keyof typeof shipping, value: string) => {
@@ -382,11 +380,6 @@ export default function CheckoutPage() {
               <div className="flex items-center justify-between">
                 <dt className="text-gray-600">Shipping</dt>
                 <dd>{formatCurrency(shippingNumber)}</dd>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <dt className="text-gray-600">Taxes</dt>
-                <dd>{formatCurrency(taxNumber)}</dd>
               </div>
 
               <div className="flex items-center justify-between border-t border-gray-200 pt-6">
