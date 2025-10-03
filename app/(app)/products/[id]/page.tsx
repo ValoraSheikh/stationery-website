@@ -74,6 +74,62 @@ export default function ProductDetailPage() {
   const [addToCartError, setAddToCartError] = useState<string | null>(null);
   const [addToCartSuccess, setAddToCartSuccess] = useState<string | null>(null);
 
+  // Wishlist (favorite) related states
+  const [isFavoriting, setIsFavoriting] = useState(false);
+  const [isInWishlist, setIsInWishlist] = useState(false);
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const [favoriteSuccess, setFavoriteSuccess] = useState<string | null>(null);
+
+  // Toggle add-to-wishlist (POST /api/wishlist)
+  const handleToggleWishlist = async () => {
+    setFavoriteError(null);
+    setFavoriteSuccess(null);
+
+    if (!product) {
+      setFavoriteError("Product not loaded");
+      return;
+    }
+
+    setIsFavoriting(true);
+    try {
+      const res = await fetch("/api/wishlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ productId: product._id }),
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        /* ignore parse error */
+      }
+
+      if (res.status === 201) {
+        setIsInWishlist(true);
+        setFavoriteSuccess(data?.message || "Product added to wishlist");
+      } else if (res.status === 200) {
+        // API returns 200 when "already in wishlist"
+        setIsInWishlist(true);
+        setFavoriteSuccess(data?.message || "Product already in wishlist");
+      } else if (res.status === 401) {
+        setFavoriteError(data?.message || "Please log in to add to wishlist");
+      } else if (res.status >= 400) {
+        setFavoriteError(
+          data?.message || `Failed to add to wishlist (status ${res.status})`
+        );
+      } else {
+        setFavoriteSuccess(data?.message || "Wishlist updated");
+      }
+    } catch (err: unknown) {
+      setFavoriteError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setIsFavoriting(false);
+    }
+  };
+
   useEffect(() => {
     if (!productId) return;
     let mounted = true;
@@ -438,23 +494,50 @@ export default function ProductDetailPage() {
 
               {/* Add to bag / favorite */}
               <form className="mt-6" onSubmit={handleAddToCart}>
-                <div className="mt-10 flex">
+                <div className="mt-10 flex flex-col sm:flex-row sm:items-center">
                   <button
                     type="submit"
                     disabled={isAdding || outOfStock || exceedsStock}
-                    className="flex max-w-xs flex-1 items-center justify-center rounded-md border border-transparent bg-indigo-600 px-8 py-3 text-base font-medium text-white hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-50 focus:outline-hidden sm:w-full"
+                    className="flex w-full sm:max-w-xs sm:flex-1 items-center justify-center rounded-md border border-transparent bg-indigo-600 px-8 py-3 text-base font-medium text-white hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-50 focus:outline-hidden"
                   >
                     {isAdding ? "Adding..." : "Add to bag"}
                   </button>
 
                   <button
                     type="button"
-                    className="ml-4 flex items-center justify-center rounded-md px-3 py-3 text-gray-400 hover:bg-gray-100 hover:text-gray-500"
+                    onClick={handleToggleWishlist}
+                    disabled={isFavoriting}
+                    aria-pressed={isInWishlist}
+                    className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto flex items-center justify-center rounded-md px-3 py-3 text-gray-400 hover:bg-gray-100 hover:text-gray-500"
                   >
-                    <HeartIcon aria-hidden="true" className="size-6 shrink-0" />
-                    <span className="sr-only">Add to favorites</span>
+                    <HeartIcon
+                      aria-hidden="true"
+                      className={`size-6 shrink-0 ${
+                        isInWishlist ? "text-red-500" : ""
+                      }`}
+                    />
+                    <span className="sr-only">
+                      {isInWishlist ? "Added to favorites" : "Add to favorites"}
+                    </span>
                   </button>
                 </div>
+
+                {/* Wishlist messages (placed under the buttons so they appear stacked on mobile) */}
+                {favoriteError && (
+                  <p className="mt-3 text-sm text-red-600" role="alert">
+                    {favoriteError}
+                  </p>
+                )}
+
+                {favoriteSuccess && (
+                  <p
+                    className="mt-3 text-sm text-green-600"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {favoriteSuccess}
+                  </p>
+                )}
 
                 {/* minimal messages, do not alter layout much */}
                 {addToCartError && (
