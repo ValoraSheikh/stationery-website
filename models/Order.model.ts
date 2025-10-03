@@ -37,7 +37,7 @@ export interface IOrder {
   taxAmount: number;
   discount: number;
   grandTotal: number;
-  paymentMethod: "COD" | "UPI" | "Card" | "NetBanking" | "Wallet";
+  paymentMethod: "cod" | "upi" | "online" | "netbanking" | "wallet";
   paymentStatus: "pending" | "paid" | "failed" | "refunded";
   transactionId?: string;
   shippingAddress: IAddress;
@@ -81,7 +81,7 @@ const addressSchema = new mongoose.Schema<IAddress>(
     city: { type: String, required: true },
     state: { type: String, required: true },
     pincode: { type: String, required: true },
-    country: { type: String, default: 'India' },
+    country: { type: String, default: "India" },
   },
   { _id: false }
 );
@@ -114,7 +114,7 @@ const orderSchema = new mongoose.Schema<IOrderDocument, IOrderModel>(
     grandTotal: { type: Number, required: true },
     paymentMethod: {
       type: String,
-      enum: ["COD", "UPI", "Card", "NetBanking", "Wallet"],
+      enum: ["cod", "online", "upi", "netbanking", "wallet"],
       required: true,
     },
     paymentStatus: {
