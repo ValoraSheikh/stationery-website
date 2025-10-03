@@ -5,7 +5,6 @@ import Product from "@/models/Product.model";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/options";
 import mongoose from "mongoose";
-import User from "@/models/User.model";
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,7 +71,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     await dbConnect();
 
@@ -81,38 +80,53 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { productId } = body;
+    const userId = session.user.id;
 
-    if (!productId) {
-      return NextResponse.json(
-        { message: "Product ID is required in body" },
-        { status: 400 }
-      );
+    // Fetch wishlist and populate product basic fields
+    const wishlist = await Wishlist.findOne({ userId }).populate({
+      path: "items.productId",
+      model: Product,
+      select: "name price images", // only fetch fields we need
+    });
+
+    if (!wishlist || !wishlist.items || wishlist.items.length === 0) {
+      return NextResponse.json({ products: [] }, { status: 200 });
     }
 
-    const user = await User.findOne({ email: session.user.email });
-    if (!user) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 });
-    }
+    // Map items to a lightweight product list for client
+    const products = wishlist.items.map((item) => {
+      // When populated, product is an object; otherwise it's an ObjectId
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const populatedProduct: any = item.productId;
 
-    const wishlist = await Wishlist.findOneAndUpdate(
-      { userId: user._id },
-      { $pull: { items: { productId: new mongoose.Types.ObjectId(productId) } } },
-      { new: true }
-    );
+      const productId =
+        populatedProduct && populatedProduct._id
+          ? populatedProduct._id.toString()
+          : item.productId?.toString?.() || null;
 
-    if (!wishlist) {
-      return NextResponse.json({ message: "Wishlist not found" }, { status: 404 });
-    }
+      const name = populatedProduct?.name ?? null;
+      const price = populatedProduct?.price ?? null;
+      const image =
+        Array.isArray(populatedProduct?.images) &&
+        populatedProduct.images.length
+          ? populatedProduct.images[0]
+          : null;
 
-    return NextResponse.json(
-      { message: "Product removed from wishlist", wishlist },
-      { status: 200 }
-    );
+      return {
+        productId,
+        name,
+        price,
+        image,
+        addedAt: item.addedAt ?? null,
+      };
+    });
+
+    return NextResponse.json({ products }, { status: 200 });
   } catch (error) {
-    console.error("Error removing product from wishlist:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    console.error("Error fetching wishlist:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
-
