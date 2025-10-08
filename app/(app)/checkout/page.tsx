@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
@@ -11,6 +10,7 @@ import {
 import { CheckCircleIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import Image from "next/image";
 import { z } from "zod";
+import { useRouter } from "next/navigation";
 
 // Placeholder image when product has no image (not a product fallback)
 const PLACEHOLDER =
@@ -64,10 +64,9 @@ const checkoutSchema = z.object({
   paymentMethod: z.enum(["online", "cod"]),
 });
 
-type CheckoutSchema = z.infer<typeof checkoutSchema>;
 
 export default function CheckoutPage() {
-  // cart state
+  const router = useRouter();
   const [cart, setCart] = useState<CartApiResponse | null>(null);
   const [cartLoading, setCartLoading] = useState<boolean>(true);
   const [cartError, setCartError] = useState<string | null>(null);
@@ -100,7 +99,6 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     // fetch cart on mount
@@ -249,7 +247,6 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     }
 
     const orderId = resJson?.orderId ?? resJson?.data?.orderId;
-    setPlacedOrderId(orderId);
 
     // 4️⃣ If payment method is online, initiate payment
     if (paymentMethodOrder === "online" && orderId) {
@@ -275,6 +272,9 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 
     // 5️⃣ If COD, show success immediately
     setSubmitSuccess(orderId ? `Order placed successfully — Order ID: ${orderId}` : "Order placed successfully");
+    setTimeout(() => {
+        router.push("/ordersHistory");
+      }, 2000);
     setCart(null);
   } catch (err: unknown) {
     console.error(err);
