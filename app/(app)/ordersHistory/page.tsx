@@ -209,7 +209,7 @@ export default function OrderHistory(): React.ReactElement {
             number: id,
             date: dateHuman || toStringSafe(ord.date ?? ord.datetime ?? ""),
             datetime,
-            invoiceHref: `/ordersHistory/${id}`,
+            invoiceHref: `/orderSummary/${id}`,
             total: totalStr,
             products,
             raw: ordRaw,
