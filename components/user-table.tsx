@@ -26,12 +26,10 @@ export default function UserTable({
   pageSize,
   total,
   totalPages,
-  sortBy,
   order,
   onChangePage,
   onChangePageSize,
   onToggleSort,
-  onView,
   onEditRole,
   onDelete,
 }: {
@@ -99,10 +97,10 @@ export default function UserTable({
               </TableRow>
             ) : (
               data.map((u) => (
-                <TableRow key={u.id} className="hover:bg-muted/50">
+                <TableRow key={u._id} className="hover:bg-muted/50">
                   <TableCell>
                     <Avatar className="h-9 w-9">
-                      <AvatarImage src={u.avatarUrl || "/placeholder.svg"} alt={u.name} />
+                      <AvatarImage src={u.avatar || "/placeholder.svg"} alt={u.name} />
                       <AvatarFallback>{u.name?.slice(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
                   </TableCell>
@@ -115,7 +113,7 @@ export default function UserTable({
                     <Badge variant="secondary">{u.provider}</Badge>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    <Select value={u.role} onValueChange={(v) => onEditRole(u.id, v as Role)}>
+                    <Select value={u.role} onValueChange={(v) => onEditRole(u._id, v as Role)}>
                       <SelectTrigger className="h-8 w-[120px]">
                         <SelectValue placeholder="Role" />
                       </SelectTrigger>
@@ -136,7 +134,7 @@ export default function UserTable({
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuItem onClick={() => handleView(u)}>View Details</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onEditRole(u.id, u.role === "admin" ? "user" : "admin")}>
+                        <DropdownMenuItem onClick={() => onEditRole(u._id, u.role === "admin" ? "user" : "admin")}>
                           {u.role === "admin" ? "Set as User" : "Set as Admin"}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -199,7 +197,7 @@ export default function UserTable({
         destructive
         onConfirm={async () => {
           if (!selected) return
-          await onDelete(selected.id)
+          await onDelete(selected._id)
         }}
       />
     </div>

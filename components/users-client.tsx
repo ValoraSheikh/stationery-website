@@ -15,12 +15,12 @@ export type Provider = "google" | "credentials"
 export type Role = "user" | "admin"
 
 export interface User {
-  id: string
+  _id: string
   name: string
   email: string
   provider: Provider
   role: Role
-  avatarUrl?: string
+  avatar?: string
   createdAt: string
   lastActive: string
 }
@@ -34,28 +34,43 @@ export default function UsersClient() {
   const [sortBy, setSortBy] = useState<"createdAt">("createdAt")
   const [order, setOrder] = useState<"asc" | "desc">("desc")
 
-  const query = useMemo(() => {
-    const params = new URLSearchParams()
-    if (search) params.set("search", search)
-    if (role !== "all") params.set("role", role)
-    if (provider !== "all") params.set("provider", provider)
-    params.set("page", String(page))
-    params.set("pageSize", String(pageSize))
-    params.set("sort", sortBy)
-    params.set("order", order)
-    return params.toString()
-  }, [search, role, provider, page, pageSize, sortBy, order])
-
-  const { data, isLoading, mutate } = useSWR<{ users: User[]; total: number; page: number; pageSize: number }>(
-    `/api/users?${query}`,
+  const { data: allUsers, isLoading, mutate } = useSWR<User[]>(
+    `/api/admin/user`,
     fetcher,
     { keepPreviousData: true },
   )
 
+  const filteredUsers = useMemo(() => {
+    if (!allUsers) return []
+    const lowerSearch = search.toLowerCase()
+    return allUsers.filter((u) => {
+      if (search && !u.name.toLowerCase().includes(lowerSearch) && !u.email.toLowerCase().includes(lowerSearch)) return false
+      if (role !== "all" && u.role !== role) return false
+      if (provider !== "all" && u.provider !== provider) return false
+      return true
+    })
+  }, [allUsers, search, role, provider])
+
+  const sortedUsers = useMemo(() => {
+    return [...filteredUsers].sort((a, b) => {
+      if (sortBy === "createdAt") {
+        const da = new Date(a.createdAt).getTime()
+        const db = new Date(b.createdAt).getTime()
+        return order === "asc" ? da - db : db - da
+      }
+      return 0
+    })
+  }, [filteredUsers, sortBy, order])
+
+  const paginatedUsers = useMemo(() => {
+    return sortedUsers.slice((page - 1) * pageSize, page * pageSize)
+  }, [sortedUsers, page, pageSize])
+
+  const total = filteredUsers.length
+
   const totalPages = useMemo(() => {
-    if (!data) return 1
-    return Math.max(1, Math.ceil(data.total / (data.pageSize || 1)))
-  }, [data])
+    return Math.max(1, Math.ceil(total / pageSize))
+  }, [total, pageSize])
 
   const onReset = () => {
     setSearch("")
@@ -68,7 +83,7 @@ export default function UsersClient() {
   }
 
   const refreshAll = async () => {
-    await Promise.all([mutate(), globalMutate("/api/users/metrics")])
+    await mutate()
   }
 
   return (
@@ -97,11 +112,11 @@ export default function UsersClient() {
           />
 
           <UserTable
-            data={data?.users ?? []}
+            data={paginatedUsers}
             isLoading={isLoading}
             page={page}
             pageSize={pageSize}
-            total={data?.total ?? 0}
+            total={total}
             totalPages={totalPages}
             sortBy={sortBy}
             order={order}
@@ -115,10 +130,10 @@ export default function UsersClient() {
               /* handled in table with dialog */
             }}
             onEditRole={async (id, nextRole) => {
-              const res = await fetch(`/api/users/${id}`, {
+              const res = await fetch(`/api/admin/user/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ role: nextRole }),
+                body: JSON.stringify({ userId: id, role: nextRole }),
               })
               if (!res.ok) {
                 toast("Failed to update role")
@@ -128,7 +143,11 @@ export default function UsersClient() {
               await refreshAll()
             }}
             onDelete={async (id) => {
-              const res = await fetch(`/api/users/${id}`, { method: "DELETE" })
+              const res = await fetch(`/api/admin/user/${id}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId: id }),
+              })
               if (!res.ok) {
                 toast("Failed to delete user")
                 return
@@ -136,6 +155,10 @@ export default function UsersClient() {
               toast("User deleted")
               // stay on same page; adjust if last item deleted and page > 1
               await refreshAll()
+              // Optional adjustment: check if page needs to be reduced
+              if (page > 1 && (page - 1) * pageSize >= filteredUsers.length) {
+                setPage(page - 1)
+              }
             }}
           />
         </CardContent>
