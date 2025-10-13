@@ -119,7 +119,7 @@ export default function ProfileBtn(): React.ReactElement {
           <div className="py-1">
             {user?.role === "admin" && (
               <Link
-                href="/dashboard"
+                href="/admin/dashboard"
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 role="menuitem"
               >
