@@ -1,4 +1,3 @@
-
 import dbConnect from "@/lib/connectDB";
 import User from "@/models/User.model";
 import { getServerSession } from "next-auth";
