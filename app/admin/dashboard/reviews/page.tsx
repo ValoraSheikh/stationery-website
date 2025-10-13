@@ -1,9 +1,5 @@
-import React from 'react'
+import ReviewsPage from "@/components/reviews-page"
 
-const page = () => {
-  return (
-    <div>page</div>
-  )
+export default function Page() {
+  return <ReviewsPage />
 }
-
-export default page
