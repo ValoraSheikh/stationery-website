@@ -1,14 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-"use client"
+"use client";
 
-import { useMemo, useState } from "react"
-import { useReviews } from "@/hooks/use-reviews"
-import { SummaryCards } from "./summary-cards"
-import { FiltersSection, type RatingFilter, type SortBy } from "./filters-section"
-import { ReviewTable } from "./review-table"
-import type { Review } from "@/lib/types"
-import { ReviewDetailDialog } from "./review-detail-dialog"
-import { Button } from "@/components/ui/button"
+import { useMemo, useState } from "react";
+import { useReviews } from "@/hooks/use-reviews";
+import { SummaryCards } from "./summary-cards";
+import {
+  FiltersSection,
+  type RatingFilter,
+  type SortBy,
+} from "./filters-section";
+import { ReviewTable } from "./review-table";
+import type { Review } from "@/lib/types";
+import { ReviewDetailDialog } from "./review-detail-dialog";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,150 +23,163 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import {
-  Skeleton,
-} from "@/components/ui/skeleton"
-import { toast } from "sonner"
-
+} from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 export default function ReviewsPage() {
-  const { reviews, isLoading, isError, deleteOne, deleteMany } = useReviews()
+  const { reviews, isLoading, isError, deleteOne, deleteMany } = useReviews();
 
   // Filters state
-  const [search, setSearch] = useState("")
-  const [rating, setRating] = useState<RatingFilter>("all")
-  const [fromDate, setFromDate] = useState<string | undefined>(undefined)
-  const [toDate, setToDate] = useState<string | undefined>(undefined)
-  const [sortBy, setSortBy] = useState<SortBy>("newest")
+  const [search, setSearch] = useState("");
+  const [rating, setRating] = useState<RatingFilter>("all");
+  const [fromDate, setFromDate] = useState<string | undefined>(undefined);
+  const [toDate, setToDate] = useState<string | undefined>(undefined);
+  const [sortBy, setSortBy] = useState<SortBy>("newest");
 
   // Pagination state
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(10)
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
 
   // Selection state
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Detail dialog state
-  const [detailOpen, setDetailOpen] = useState(false)
-  const [detailReview, setDetailReview] = useState<Review | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailReview, setDetailReview] = useState<Review | null>(null);
 
   function resetFilters() {
-    setSearch("")
-    setRating("all")
-    setFromDate(undefined)
-    setToDate(undefined)
-    setSortBy("newest")
-    setPage(1)
+    setSearch("");
+    setRating("all");
+    setFromDate(undefined);
+    setToDate(undefined);
+    setSortBy("newest");
+    setPage(1);
   }
 
+  const safeReviews = useMemo(() => {
+    // ✅ Only check for 'user' and 'product' (not userId/productId)
+    return reviews.filter((r) => r?.user && r?.product);
+  }, [reviews]);
+
+  console.log("Here I am getting reviews", reviews);
   // Derived filtered + sorted reviews
   const filtered = useMemo(() => {
-    let list = reviews.slice()
+    let list = safeReviews.slice(); // ✅ Changed from reviews.slice()
 
+    console.log("Here is empty", list);
+    
     if (search.trim()) {
-      const q = search.toLowerCase()
+      const q = search.toLowerCase();
       list = list.filter(
         (r) =>
-          r.productId.name.toLowerCase().includes(q) ||
-          r.userId.name.toLowerCase().includes(q) ||
-          r.userId.email.toLowerCase().includes(q),
-      )
+          r.product.name.toLowerCase().includes(q) || // ✅ Change productId to product
+          r.user.name.toLowerCase().includes(q) || // ✅ Change userId to user
+          r.user.email.toLowerCase().includes(q) // ✅ Change userId to user
+      );
     }
     if (rating !== "all") {
-      const n = Number(rating)
-      list = list.filter((r) => r.rating === n)
+      const n = Number(rating);
+      list = list.filter((r) => r.rating === n);
     }
     if (fromDate) {
-      const fd = new Date(fromDate).getTime()
-      list = list.filter((r) => new Date(r.createdAt).getTime() >= fd)
+      const fd = new Date(fromDate).getTime();
+      list = list.filter((r) => new Date(r.createdAt).getTime() >= fd);
     }
     if (toDate) {
-      const td = new Date(toDate).getTime()
-      list = list.filter((r) => new Date(r.createdAt).getTime() <= td)
+      const td = new Date(toDate).getTime();
+      list = list.filter((r) => new Date(r.createdAt).getTime() <= td);
     }
 
     list.sort((a, b) => {
       switch (sortBy) {
         case "newest":
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
         case "oldest":
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          return (
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
         case "highest":
-          return b.rating - a.rating
+          return b.rating - a.rating;
         case "lowest":
-          return a.rating - b.rating
+          return a.rating - b.rating;
         default:
-          return 0
+          return 0;
       }
-    })
+    });
 
-    return list
-  }, [reviews, search, rating, fromDate, toDate, sortBy])
+    return list;
+  }, [search, rating, fromDate, toDate, sortBy, safeReviews]);
 
   // Stats
   const { total, avg, lowCount } = useMemo(() => {
-    const total = filtered.length
-    const avg = total ? filtered.reduce((sum, r) => sum + r.rating, 0) / total : 0
-    const lowCount = filtered.filter((r) => r.rating <= 2).length
-    return { total, avg, lowCount }
-  }, [filtered])
+    const total = filtered.length;
+    const avg = total
+      ? filtered.reduce((sum, r) => sum + r.rating, 0) / total
+      : 0;
+    const lowCount = filtered.filter((r) => r.rating <= 2).length;
+    return { total, avg, lowCount };
+  }, [filtered]);
 
   function openDetail(r: Review) {
-    setDetailReview(r)
-    setDetailOpen(true)
+    setDetailReview(r);
+    setDetailOpen(true);
   }
 
   async function handleDelete(id: string) {
     try {
-      await deleteOne(id)
+      await deleteOne(id);
       setSelectedIds((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      toast("Review deleted")
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast("Review deleted");
     } catch (e: any) {
-      toast("Failed to delete")
+      toast("Failed to delete");
     }
   }
 
   async function handleBulkDelete(ids: string[]) {
     try {
-      await deleteMany(ids)
-      setSelectedIds(new Set())
-      toast("Selected reviews deleted")
+      await deleteMany(ids);
+      setSelectedIds(new Set());
+      toast("Selected reviews deleted");
     } catch (e: any) {
-      toast("Failed to delete selected")
+      toast("Failed to delete selected");
     }
   }
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function toggleSelectAllOnPage(ids: string[]) {
     setSelectedIds((prev) => {
-      const next = new Set(prev)
-      const allSelected = ids.every((id) => next.has(id))
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
       if (allSelected) {
-        ids.forEach((id) => next.delete(id))
+        ids.forEach((id) => next.delete(id));
       } else {
-        ids.forEach((id) => next.add(id))
+        ids.forEach((id) => next.add(id));
       }
-      return next
-    })
+      return next;
+    });
   }
 
   return (
     <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
       <header className="space-y-4">
-        <h1 className="text-2xl md:text-3xl font-semibold text-pretty">Reviews Management</h1>
+        <h1 className="text-2xl md:text-3xl font-semibold text-pretty">
+          Reviews Management
+        </h1>
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Skeleton className="h-24 rounded-xl" />
@@ -190,24 +207,35 @@ export default function ReviewsPage() {
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">{selectedIds.size} selected</div>
+          <div className="text-sm text-muted-foreground">
+            {selectedIds.size} selected
+          </div>
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={selectedIds.size === 0} className="rounded-lg">
+              {/* <Button
+                variant="destructive"
+                disabled={selectedIds.size === 0}
+                className="rounded-lg"
+              >
                 Delete Selected
-              </Button>
+              </Button> */}
             </AlertDialogTrigger>
             <AlertDialogContent className="rounded-xl">
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete selected reviews?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. {selectedIds.size} review(s) will be permanently deleted.
+                  This action cannot be undone. {selectedIds.size} review(s)
+                  will be permanently deleted.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleBulkDelete(Array.from(selectedIds))}>Delete</AlertDialogAction>
+                <AlertDialogAction
+                  onClick={() => handleBulkDelete(Array.from(selectedIds))}
+                >
+                  Delete
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -221,7 +249,9 @@ export default function ReviewsPage() {
           </div>
         )}
 
-        {isError && <p className="text-sm text-destructive">Failed to load reviews.</p>}
+        {isError && (
+          <p className="text-sm text-destructive">Failed to load reviews.</p>
+        )}
 
         {!isLoading && !isError && (
           <>
@@ -243,13 +273,13 @@ export default function ReviewsPage() {
               onOpenChange={setDetailOpen}
               review={detailReview}
               onDelete={(id) => {
-                setDetailOpen(false)
-                handleDelete(id)
+                setDetailOpen(false);
+                handleDelete(id);
               }}
             />
           </>
         )}
       </section>
     </main>
-  )
+  );
 }
