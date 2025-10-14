@@ -4,6 +4,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]/options";
 import dbConnect from "@/lib/connectDB";
 import Review from "@/models/Review.model";
+import "@/models/Product.model";
+import "@/models/User.model";
+
 
 export async function GET() {
   try {
@@ -14,9 +17,9 @@ export async function GET() {
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-    // ✅ Fetch reviews with populated user and product info
+    
     const reviews = await Review.find()
-      .populate("userId", "name email avatar") // basic user info
+      .populate("userId", "name email avatar")
       .populate(
         "productId",
         "name price images productCode mainCategory subCategory variants totalStock"
@@ -24,8 +27,11 @@ export async function GET() {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Map to simpler frontend-friendly format
-    const mapped = reviews.map((r: any) => ({
+    // ✅ ADD THIS LINE - Remove reviews with deleted users/products
+    const validReviews = reviews.filter((r: any) => r.userId && r.productId);
+
+    // Change this line from 'reviews' to 'validReviews'
+    const mapped = validReviews.map((r: any) => ({
       _id: r._id,
       rating: r.rating,
       text: r.text,
